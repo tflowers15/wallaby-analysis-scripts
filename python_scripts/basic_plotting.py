@@ -1,3 +1,7 @@
+# ============================================================ #
+# ===== Basic plots for analysis of HI scaling relations ===== #
+# ============================================================ #
+
 # Libraries
 
 import warnings
@@ -63,7 +67,6 @@ from sqlite3 import OperationalError
 
 from functions_plotting import *
 from functions_calculations import *
-    
 
 #def fxn():
     #warnings.warn("deprecated", DeprecationWarning)
