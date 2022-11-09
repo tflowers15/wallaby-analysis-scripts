@@ -20,7 +20,7 @@ from astropy.table import Table, join, vstack
 from astroquery.irsa_dust import IrsaDust
 
 
-from functions_plotting import *
+#from functions_plotting import *
 from functions_calculations import *
 
 
@@ -316,19 +316,21 @@ lbl_sfe    = r'$\log$(SFE/[yr$^{-1}$])'
 do_open_tables           = True          # Always True, opens and joins tables
 do_get_source_properties = True          # Always True, provides input source parameters
 
-do_get_dust_extinction   = False          # Only True once to create table with Galactic dust extinctions E(B-V)
+do_get_dust_extinction   = True          # Only True once to create table with Galactic dust extinctions E(B-V)
 
-do_derive_quantities     = True         # True to derive quantities and output table for single team release
+do_derive_quantities     = False         # True to derive quantities and output table for single team release
 
 do_pilot_survey_all      = False         # True to derive quantities and output single table for all team releases
 
 # ================================= #
 # ==== Specify Phase + Release ==== #
 # ================================= #
-tr_i                     = 5
+tr_i                     = 6
 
-survey_phase_list        = ['PHASE1', 'PHASE1', 'PHASE1', 'PHASE2', 'PHASE2', 'PHASE2']
-team_release_list        = ['Hydra_DR1', 'Hydra_DR2', 'NGC4636_DR1', 'NGC4808_DR1', 'NGC5044_DR1', 'NGC5044_DR2']
+survey_phase_list        = ['PHASE1', 'PHASE1', 'PHASE1', 
+                            'PHASE2', 'PHASE2', 'PHASE2', 'PHASE2']
+team_release_list        = ['Hydra_DR1', 'Hydra_DR2', 'NGC4636_DR1', 
+                            'NGC4808_DR1', 'NGC5044_DR1', 'NGC5044_DR2', 'NGC5044_DR3']
 
 survey_phase             = survey_phase_list[tr_i]
 team_release             = team_release_list[tr_i]
@@ -600,7 +602,7 @@ if do_get_dust_extinction:
     extinct_table     = IrsaDust.get_query_table(pos_hi[i], section='ebv')
     extinct_SAF[i]    = extinct_table['ext SandF mean'][0]
     extinct_SFD[i]    = extinct_table['ext SFD mean'][0]
-    print(galaxies[i], 100*i/len(galaxies), extinct_SAF[i], extinct_SFD[i])
+    print(galaxies[i], np.round(100*i/len(galaxies),2), extinct_SAF[i], extinct_SFD[i])
     
     
   table_str  = parameter_dir + '%s_galactic_dust_extinction.fits' % team_release
