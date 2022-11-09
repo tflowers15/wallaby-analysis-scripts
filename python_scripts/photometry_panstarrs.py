@@ -917,15 +917,15 @@ lbl_sratio = r'$d_{\mathrm{HI}}/d_{25}$'
 # =========== Switches ============ #
 # ================================= #
 do_get_source_properties = True          # Always True, provides input source parameters
-have_segments            = False         # True to open *_panstarrs_segments_deblend.fits if exists/final
+have_segments            = True          # True to open *_panstarrs_segments_deblend.fits if exists/final
 #have_optical             = False         # True to open *_panstarrs_photometry.fits if exists
 
 
 # ++++ ONLY RUN ONE AT A TIME +++++ #
-do_segim                 = True          # True to create segmentation maps
+do_segim                 = False         # True to create segmentation maps
 do_segim_bespoke         = False         # True to fix segmentation map for single source
-do_fit_phot              = False         # True to fit annuli/apertures to g-/r-band images
-do_measure               = False         # True to measure magnitudes/radii
+do_fit_phot              = False          # True to fit annuli/apertures to g-/r-band images
+do_measure               = True         # True to measure magnitudes/radii
 
 
 # ================================= #
@@ -973,8 +973,18 @@ if ~have_segments:
   hdu_gaussian   = fits.open(fits_gaussian)
   data_gaussian  = hdu_gaussian[1].data
   
-  join1          = join(data_sofia, data_flags, join_type='left')
+  join1          = join(data_sofia, data_flags, join_type='left', keys=['name']) 
+  
+  for i in range(1, len(join1.columns)):
+    if '_1' in join1.columns[i].name:
+      join1.rename_column(join1.columns[i].name, data_sofia.columns.names[i])
+  
+  for i in range(len(join1.columns)-1, 0, -1):
+    if '_2' in join1.columns[i].name:
+      join1.remove_column(join1.columns[i].name)
+  
   data_join      = join(join1, data_gaussian, join_type='left')
+
 
 if have_segments:
   fits_sofia     = sofia_dir + '%s_catalogue.fits' % team_release
@@ -998,10 +1008,21 @@ if have_segments:
   hdu_segments   = fits.open(fits_segments)
   data_segments  = hdu_segments[1].data
   
-  join1          = join(data_sofia, data_flags, join_type='left')
+  
+  join1          = join(data_sofia, data_flags, join_type='left', keys=['name']) 
+  
+  for i in range(1, len(join1.columns)):
+    if '_1' in join1.columns[i].name:
+      join1.rename_column(join1.columns[i].name, data_sofia.columns.names[i])
+  
+  for i in range(len(join1.columns)-1, 0, -1):
+    if '_2' in join1.columns[i].name:
+      join1.remove_column(join1.columns[i].name)
+  
   join2          = join(join1, data_gaussian, join_type='left')
   data_join      = join(join2, data_segments, join_type='left')
-
+  #print(data_join.columns)
+  
 
 # ================================= #
 # ===== Get Source Properties ===== #
@@ -1176,7 +1197,7 @@ if do_segim:
 # ==== Create Segmentation Maps === #
 # ================================= #
 if do_segim_bespoke:
-  galaxy_to_find    = 'J103737-261641'
+  galaxy_to_find    = 'J132944-211051'
   gal_select        = (galaxies == galaxy_to_find)
   
   print(galaxies[galaxies == galaxy_to_find])
@@ -1184,9 +1205,9 @@ if do_segim_bespoke:
   band              = 'r'
   fits_dir          = panstarrs_dir + galaxy_to_find +'/'
   
-  do_seg_par_array  = [True, 5., 10, 4.25, 30] 
+  do_seg_par_array  = [True, 5., 10, 4., 10.] 
   do_seg_id_array   = [False, 0]
-  do_deblend_array  = [False, 0.1, 40]
+  do_deblend_array  = [False, 0.1, 10]
   
   
   print('%.0f\t%.0f\t%.2f\t%.2f\t%.0f' % (seg_x[gal_select], 
@@ -1222,6 +1243,8 @@ if do_segim_bespoke:
   os.system('mv %s %s' % (table_str, table_str_old))
   #os.system('rm -rf %s' % table_str)
   
+  tdata = []
+  tcols = []
   for i in range(len(data_join.columns)):
     if i < len(data_sofia.columns.names):
       tdata.append(data_join[data_join.columns[i].name])
@@ -1296,8 +1319,8 @@ if do_fit_phot:
   for i in range(len(galaxies)):
     table_str  = panstarrs_dir + 'PROFILES_BKGDSUB/' + galaxies[i] + '_profile.fits'
     print('%i\t%s\t%.2f' % (i, galaxies[i], (100.*(i + 1.)/len(galaxies))))
-    if galaxies[i] == 'J104059-270456':
-    #if i > -1 and opt_fit_flag[i] == 0 and ~os.path.isfile(table_str):
+    #if galaxies[i] == 'J104059-270456':
+    if i > -1 and opt_fit_flag[i] == 0 and np.isfinite(seg_radius[i]) and not os.path.isfile(table_str):
       fig = plt.figure(figsize=(5,5))
       
       segment_parameters = [seg_x[i], seg_y[i], seg_radius[i], seg_ba[i], seg_pa[i]]
@@ -1547,6 +1570,8 @@ if do_measure:
     table_str  = parameter_dir + '%s_panstarrs_photometry.fits' % team_release
     os.system('rm -rf %s' % table_str)
     
+    tdata = []
+    tcols = []
     for i in range(len(data_join.columns)):
       if i < len(data_sofia.columns.names):
         tdata.append(data_join[data_join.columns[i].name])

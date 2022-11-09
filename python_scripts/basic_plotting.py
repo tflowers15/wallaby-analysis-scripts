@@ -1,7 +1,3 @@
-# ============================================================ #
-# ===== Basic plots for analysis of HI scaling relations ===== #
-# ============================================================ #
-
 # Libraries
 
 import warnings
@@ -67,6 +63,7 @@ from sqlite3 import OperationalError
 
 from functions_plotting import *
 from functions_calculations import *
+    
 
 #def fxn():
     #warnings.warn("deprecated", DeprecationWarning)
@@ -755,7 +752,7 @@ def scatter_radial_profiles_optical(input_dirs, input_fnames, output_fnames, dat
     plt.clf()
 
 
-def hist_percentile_plot(fig_num, subfig, data, colour, lsty, percentile, xlbl):
+def hist_percentile_plot(fig_num, subfig, data, colour, lsty, percentile, labels, xlbl, do_legend):
     matplotlib.rcParams.update({'font.size': 12})
     rc('font',**{'family':'serif','serif':['Times']})
     rc('text', usetex=True)
@@ -763,15 +760,17 @@ def hist_percentile_plot(fig_num, subfig, data, colour, lsty, percentile, xlbl):
     ax1.set_xlabel(xlbl)
     ax1.set_ylabel(r'Number')
     #ax1.set_xscale('log')
-    plt.hist(data, bins=10, color=colour, histtype='step', linestyle=lsty, linewidth=1.5)
+    plt.hist(data, bins=10, color=colour, histtype='step', linestyle=lsty, linewidth=1.5, label=labels)
     data_median = np.nanmedian(data)
     data_p20    = np.abs(data_median - np.percentile(data[~np.isnan(data)], percentile))
     data_p80    = np.abs(data_median - np.percentile(data[~np.isnan(data)], 100 - percentile))
     #print(data_median, data_p20, data_p80)
-    ax1.axvline(data_median, linewidth=0.75, linestyle = '--', color = 'grey')
-    ax1.axvline(data_median - data_p20, linewidth=0.75, linestyle = ':', color = 'grey')
-    ax1.axvline(data_median + data_p80, linewidth=0.75, linestyle = ':', color = 'grey')
+    ax1.axvline(data_median, linewidth=1.5, linestyle = '--', color = colour)
+    #ax1.axvline(data_median - data_p20, linewidth=0.75, linestyle = ':', color = colour)
+    #ax1.axvline(data_median + data_p80, linewidth=0.75, linestyle = ':', color = colour)
     #ax1.legend(loc='upper right', fontsize = 8.5)
+    if do_legend:
+      ax1.legend(fontsize = 12)
     plt.subplots_adjust(wspace=0.15, hspace=0.15)
     return(data_median, data_p20, data_p80)
     
@@ -874,11 +873,13 @@ do_get_properties    = True
 do_wang2016          = False
 do_xgass             = True
 
+do_histograms        = True
+
 do_main_sequence     = False
 do_hi_fraction_mstar = False
 do_hi_fraction_ssfr  = False
 do_hi_fraction_nuvr  = False
-do_hi_fraction_dsfms = True
+do_hi_fraction_dsfms = False
 
 do_hifrac_mstar      = False
 
@@ -955,7 +956,16 @@ if do_open_catalogues:
     hdu_panstarrs  = fits.open(fits_panstarrs)
     data_panstarrs = hdu_panstarrs[1].data
     
-    join1          = join(data_sofia, data_flags, join_type='left')
+    join1          = join(data_sofia, data_flags, join_type='left', keys=['name']) 
+  
+    for i in range(1, len(join1.columns)):
+      if '_1' in join1.columns[i].name:
+        join1.rename_column(join1.columns[i].name, data_sofia.columns.names[i])
+    
+    for i in range(len(join1.columns)-1, 0, -1):
+      if '_2' in join1.columns[i].name:
+        join1.remove_column(join1.columns[i].name)
+    
     join2          = join(join1, data_params, join_type='left')
     join3          = join(join2, data_sfrs, join_type='left')
     data_join      = join(join3, data_panstarrs, join_type='left')
@@ -1331,6 +1341,28 @@ if do_xgass:
   
 
 
+# ================================= #
+# ========= Distributions ========= #
+# ================================= #
+if do_histograms:
+  fig1 = plt.figure(1, figsize=(6, 3))
+    
+  xlbl         = lbl_dlum
+  
+  xpar       = distance
+  
+  hist_percentile_plot(fig1, [1,1,1], xpar, 'darkblue', '-', 20, 
+                       'All (%i)' % len(xpar), xlbl, False)
+  
+  subsample  = (radius_r_iso25 * axis_ratio_opt > 15)
+  xpar       = distance[subsample]
+  
+  hist_percentile_plot(fig1, [1,1,1], xpar, 'peru', '-', 20, 
+                       'Resolved (%i)' % len(xpar), xlbl, True)
+  
+  plot_name = plot_dir + 'DISTRIBUTIONS/pilot_distance_hist.pdf'
+  plt.savefig(plot_name, bbox_inches = 'tight', dpi = 1000)
+  plt.clf()
 
 # ================================= #
 # ======= SFR Main Sequence ======= #

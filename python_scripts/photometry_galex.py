@@ -370,18 +370,18 @@ lbl_sratio = r'$d_{\mathrm{HI}}/d_{25}$'
 # ================================= #
 do_get_source_properties = True          # Always True, provides input source parameters
 have_segments            = False         # True to open *_panstarrs_segments_deblend.fits if exists/final
-have_optical             = False         # True to open *_panstarrs_photometry.fits if exists
+have_optical             = True         # True to open *_panstarrs_photometry.fits if exists
 
 # ++++ ONLY RUN ONE AT A TIME +++++ #
-do_fit_phot              = False         # True to fit annuli/apertures to NUV-band image
-do_measure               = False         # True to measure magnitudes/radii
+do_fit_phot              = False          # True to fit annuli/apertures to NUV-band image
+do_measure               = True         # True to measure magnitudes/radii
 
 
 
 # ================================= #
 # ==== Specify Phase + Release ==== #
 # ================================= #
-tr_i                     = 1
+tr_i                     = 6
 
 survey_phase_list        = ['PHASE1', 'PHASE1', 'PHASE1', 
                             'PHASE2', 'PHASE2', 'PHASE2', 'PHASE2']
@@ -423,8 +423,19 @@ if ~have_optical and ~have_segments:
   hdu_gaussian   = fits.open(fits_gaussian)
   data_gaussian  = hdu_gaussian[1].data
   
-  join1          = join(data_sofia, data_flags, join_type='left')
+  join1          = join(data_sofia, data_flags, join_type='left', keys=['name']) 
+  
+  for i in range(1, len(join1.columns)):
+    if '_1' in join1.columns[i].name:
+      join1.rename_column(join1.columns[i].name, data_sofia.columns.names[i])
+  
+  for i in range(len(join1.columns)-1, 0, -1):
+    if '_2' in join1.columns[i].name:
+      join1.remove_column(join1.columns[i].name)
+  
   data_join      = join(join1, data_gaussian, join_type='left')
+  
+  print(data_join['flag_opt_fit'])
 
 if have_segments:
   print('============ %s ============' % team_release)
@@ -445,7 +456,16 @@ if have_segments:
   hdu_segments   = fits.open(fits_segments)
   data_segments  = hdu_segments[1].data
   
-  join1          = join(data_sofia, data_flags, join_type='left')
+  join1          = join(data_sofia, data_flags, join_type='left', keys=['name']) 
+  
+  for i in range(1, len(join1.columns)):
+    if '_1' in join1.columns[i].name:
+      join1.rename_column(join1.columns[i].name, data_sofia.columns.names[i])
+  
+  for i in range(len(join1.columns)-1, 0, -1):
+    if '_2' in join1.columns[i].name:
+      join1.remove_column(join1.columns[i].name)
+  
   join2          = join(join1, data_gaussian, join_type='left')
   data_join      = join(join2, data_segments, join_type='left')
 
@@ -468,7 +488,16 @@ if have_optical:
   hdu_panstarrs  = fits.open(fits_panstarrs)
   data_panstarrs = hdu_panstarrs[1].data
   
-  join1          = join(data_sofia, data_flags, join_type='left')
+  join1          = join(data_sofia, data_flags, join_type='left', keys=['name']) 
+  
+  for i in range(1, len(join1.columns)):
+    if '_1' in join1.columns[i].name:
+      join1.rename_column(join1.columns[i].name, data_sofia.columns.names[i])
+  
+  for i in range(len(join1.columns)-1, 0, -1):
+    if '_2' in join1.columns[i].name:
+      join1.remove_column(join1.columns[i].name)
+  
   join2          = join(join1, data_gaussian, join_type='left')
   data_join      = join(join2, data_panstarrs, join_type='left')
 
@@ -567,8 +596,8 @@ print(len(galaxies))
 # ================================= #
 if do_fit_phot:
   for i in range(len(galaxies)):
-    if galaxies[i] == 'J104059-270456': #'J123742-033505': #
-    #if i > -1:
+    #if galaxies[i] == 'J104059-270456': #'J123742-033505': #
+    if i > -1:
       print('%i\t%s\t%.2f' % (i, galaxies[i], (100.*(i + 1.)/len(galaxies))))
       profile_file    = panstarrs_dir + 'PROFILES_BKGDSUB/' + galaxies[i] + '_profile.fits'
       if os.path.isfile(profile_file):

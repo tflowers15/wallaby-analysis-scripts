@@ -477,7 +477,7 @@ do_get_source_properties = True          # Always True, provides input source pa
 have_optical             = False         # True to open *_panstarrs_photometry.fits if exists
 
 # ++++ ONLY RUN ONE AT A TIME +++++ #
-table_add_flags          = True         # Only set True once to create SoFiA catalogue with flag columns
+table_add_flags          = False         # Only set True once to create SoFiA catalogue with flag columns
 
 do_measure_hi            = False          # True to measure HI structural properties
 do_hi_opt_disc           = False         # True to measure HI mass/surface density w/in optical disc
