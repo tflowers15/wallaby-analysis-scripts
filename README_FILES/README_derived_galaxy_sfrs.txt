@@ -1,6 +1,6 @@
-Description of *derived_galaxy_properties.fits files.
+Description of *derived_galaxy_sfrs.fits files.
 
-####### *derived_galaxy_properties.fits #######
+####### *derived_galaxy_sfrs.fits #######
 
 Columns 1-37            	- Default SoFiA catalogue columns
 
