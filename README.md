@@ -9,7 +9,7 @@ and star formation rates).
 
 ## Documentation
 
-These scripts are built using Python v3.7.6 and primarily use the packages Astropy v4.0 and Photutils v1.3.0. The python scripts are run from the command line, e.g. "python *.py". Controls and settings are defined within each script.
+These scripts are built using Python v3.7.6 and primarily use the packages Astropy v4.0 and Photutils v1.3.0. The python scripts are run from the command line, e.g. "python *.py". Controls and settings are defined within each script. These scripts require a WALLABY SoFiA source catalogue and associated data products (e.g. spectra, moment maps, cubelets, etc.) as inputs to be run.
 
 The procedures for downloading/measuring photometry/deriving physical quantities are described in Photometry_Cookbook_vX.pdf. This document also provides a step-by-step guide showing the order and settings in which each python script should be run.
 
