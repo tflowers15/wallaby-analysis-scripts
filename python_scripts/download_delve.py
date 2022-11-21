@@ -3,52 +3,21 @@
 import warnings
 warnings.simplefilter("ignore")
 
-import math
-import sys
 import numpy as np
-from datetime import datetime
 import numpy
-from astropy.table import Table
-import requests
-from PIL import Image
-from io import BytesIO
-import urllib
-import pylab
-import matplotlib
-import matplotlib as mpl
 import astropy.io.fits as pyfits
 import os.path
-import fileinput
-import astropy.stats
-from os import system
-from matplotlib import rc
 from astropy import constants as const
-from astropy import units
 from astropy.cosmology import Planck15 as cosmo
-from astropy.cosmology import z_at_value, WMAP7
-from astropy.coordinates import EarthLocation, SkyCoord, ICRS, Angle, match_coordinates_3d, Distance
-from astropy.wcs import WCS, find_all_wcs
+from astropy.wcs import WCS
 from astropy.io import fits
-from astropy import units as u
 import wget
-
-
-from getpass import getpass
 import warnings  
-from astropy.utils.exceptions import AstropyWarning
-#warnings.simplefilter('ignore', category=AstropyWarning) # to quiet Astropy warnings
 
-# 3rd party
-#import numpy as np
 from numpy.core.defchararray import startswith
-#import pylab as plt
-#import matplotlib
 
 from pyvo.dal import sia
 from astropy.utils.data import download_file
-from astropy.io import fits
-#from astropy.wcs import WCS
-from astropy.visualization import make_lupton_rgb
 
 # Data Lab
 #from dl import queryClient as qc, storeClient as sc, authClient as ac
@@ -133,8 +102,10 @@ do_download_delve         = True
 # ================================= #
 tr_i                     = 1
 
-survey_phase_list        = ['PHASE1', 'PHASE1', 'PHASE1', 'PHASE2', 'PHASE2', 'PHASE2']
-team_release_list        = ['Hydra_DR1', 'Hydra_DR2', 'NGC4636_DR1', 'NGC4808_DR1', 'NGC5044_DR1', 'NGC5044_DR2']
+survey_phase_list        = ['PHASE1', 'PHASE1', 'PHASE1', 
+                            'PHASE2', 'PHASE2', 'PHASE2', 'PHASE2']
+team_release_list        = ['Hydra_DR1', 'Hydra_DR2', 'NGC4636_DR1', 
+                            'NGC4808_DR1', 'NGC5044_DR1', 'NGC5044_DR2', 'NGC5044_DR3']
 
 survey_phase             = survey_phase_list[tr_i]
 team_release             = team_release_list[tr_i]
@@ -146,7 +117,7 @@ basedir                  = '/Users/tflowers/WALLABY/%s/%s/' % (survey_phase, tea
 sofia_dir                = basedir + 'SOFIA/'
 dataprod_dir             = basedir + 'SOFIA/%s_source_products/' % team_release
 panstarrs_dir            = basedir + 'MULTIWAVELENGTH/PANSTARRS/'
-delve_dir                = basedir + 'MULTIWAVELENGTH/DELVE_V2/'
+delve_dir                = basedir + 'MULTIWAVELENGTH/DELVE/'
 wise_dir                 = basedir + 'MULTIWAVELENGTH/unWISE/'
 galex_dir                = basedir + 'MULTIWAVELENGTH/GALEX/'
 parameter_dir            = basedir + 'PARAMETERS/'
@@ -179,6 +150,9 @@ print(galaxies)
 # ====== Download PanSTARRS ======= #
 # ================================= #
 if do_download_delve:
+  # ===== Replace 'nsa' or 'coadd_all' with the name ===== #
+  # ======== of the DELVE data release repository ======== #
+  
   #DEF_ACCESS_URL = "https://datalab.noirlab.edu/sia/nsa"
   DEF_ACCESS_URL = "https://datalab.noirlab.edu/sia/coadd_all"
   svc = sia.SIAService(DEF_ACCESS_URL)
@@ -187,8 +161,8 @@ if do_download_delve:
   #bands = ['g', 'r', 'i', 'z', 'y']
   bands = ['g', 'r']
   for i in range(len(galaxies)):
-    if galaxies[i] == 'J101035-254920':
-    #if i > -1:
+    #if galaxies[i] == 'J101035-254920':
+    if i > -1:
       print('%i\t%s\t%.2f' % (i, galaxies[i], (100.*(i + 1.)/len(galaxies))))
       delve_gal_dir = delve_dir + galaxies[i] + '/'
       if not os.path.exists(delve_gal_dir):
@@ -208,86 +182,10 @@ if do_download_delve:
         fits_tan  = galaxies[i] + '_' + bands[j] +'.fits'
         fdownload = delve_gal_dir + fits_tan
         if ~os.path.isfile(fdownload):
-          #Download PanSTARRS FITS Image
+          # === Download DECAM FITS Image === #
           fitsurl   = get_url_delve(sofia_ra[i], sofia_dec[i], svc = svc, fov = size, band = bands[j])
           print(fitsurl)
           for k in range(len(fitsurl)):
             wget.download(fitsurl[k], fdownload + '_%i' % k)
-          ##Convert from TAN to SIN Projection
-          #f1              = pyfits.open(fdownload, mode='update')
-          #hdr             = f1[0].header
-          #hdr['CDELT1']   = hdr['CD1_1']
-          #f1.flush()
           
-
-
-'''
-# ================================= #
-# ============ Meerkat ============ #
-# ================================= #
-if do_meerkat:
-  print('============ MEERKAT =============')
-  basedir            = '/Users/tflowers/MEERKAT/'
-  panstarrs_dir      = basedir + 'PANSTARRS/'
-  
-  fits_cat     = basedir + 'meerkat_marcin_catalogue_original.fits'
-  
-  hdu_cat      = fits.open(fits_cat)
-  data_cat     = hdu_cat[1].data
-  
-  sofia_id     = data_cat['id']
-  sofia_ra     = data_cat['RA2000']
-  sofia_dec    = data_cat['DEC2000']
-  
-  ra           = data_cat['ra']
-  dec          = data_cat['dec']
-  gal_name     = []
-  for i in range(len(data_cat['ra'])):
-    split_ra  = data_cat['ra'][i][:2] + data_cat['ra'][i][3:5] + data_cat['ra'][i][6:8]
-    split_dec = data_cat['dec'][i][:3] + data_cat['dec'][i][4:6] + data_cat['dec'][i][7:9]
-    gal_name.append('J' + split_ra + split_dec)
-    
-  galaxies   = np.array(gal_name)
-  
-  table_str  = basedir + 'meerkat_marcin_catalogue.fits'
-  tdata      = [sofia_id, galaxies, sofia_ra, sofia_dec]
-  tcols      = ('ID', 'NAME', 'RA', 'DEC')
-  t          = Table(tdata, names=tcols)
-  t.write(table_str, format = 'fits')
-
-# ================================= #
-# ====== Download PanSTARRS ======= #
-# ================================= #
-if do_download_panstarrs_mk:
-  bands = ['g', 'r']
-  for i in range(len(galaxies)):
-    #if galaxies[i] == 'J104059-270456':
-    print(galaxies[i])
-    panstarrs_gal_dir = panstarrs_dir + galaxies[i] + '/'
-    if not os.path.exists(panstarrs_gal_dir):
-      os.system('mkdir %s' % panstarrs_gal_dir)
-    size = 512
-    for j in range(len(bands)):
-      fits_tan  = galaxies[i] + '_' + bands[j] +'.fits'
-      mir_tan   = galaxies[i] + '_' + bands[j] +'.mir'
-      mir_sin   = galaxies[i] + '_' + bands[j] +'.sin.mir'
-      fits_sin  = galaxies[i] + '_' + bands[j] +'.sin.fits'
-      if os.path.isfile(panstarrs_gal_dir + fits_tan):
-        dummy = 0
-      else:
-        fitsurl   = geturl(sofia_ra[i], sofia_dec[i], size=size, filters=bands[j], format="fits")
-        fdownload = panstarrs_gal_dir + fits_tan
-        wget.download(fitsurl[0], fdownload)
-        os.chdir(panstarrs_gal_dir)
-        os.system('pwd')
-        os.system('fits in=%s op=xyin out=%s' % (fits_tan, mir_tan))
-        os.system('regrid in=%s out=%s project=SIN' % (mir_tan, mir_sin))
-        os.system('fits in=%s op=xyout out=%s' % (mir_sin, fits_sin))
-        os.system('rm -rf %s' % mir_tan)
-        os.system('rm -rf %s' % mir_sin)
-        #os.system('rm -rf %s' % fits_tan)
-        os.chdir('/Users/tflowers')
-        os.system('pwd')
-'''
-
-
+          
