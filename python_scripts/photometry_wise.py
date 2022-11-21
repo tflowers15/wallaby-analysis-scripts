@@ -32,164 +32,6 @@ from functions_calculations import *
 # ================================= #
 # ==== Measure WISE Photometry ==== #
 # ================================= #
-def wise_magnitude_old(wise_dir, galaxy, aperture_params, allwise_params, jarrett_params, fignum):
-    wise_psf_maj     = 1. * np.array([6.08, 6.84, 7.36, 11.99])
-    wise_psf_min     = 1. * np.array([5.60, 6.12, 6.08, 11.65])
-    
-    adu_w1, adu_w1_err, mag_w1, mag_w1_err = np.nan, np.nan, np.nan, np.nan
-    adu_w2, adu_w2_err, mag_w2, mag_w2_err = np.nan, np.nan, np.nan, np.nan
-    adu_w3, adu_w3_err, mag_w3, mag_w3_err = np.nan, np.nan, np.nan, np.nan
-    adu_w4, adu_w4_err, mag_w4, mag_w4_err = np.nan, np.nan, np.nan, np.nan
-    
-    ps_aper_x      = aperture_params[0]
-    ps_aper_y      = aperture_params[1]
-    ps_aper_r      = aperture_params[2]
-    ps_aper_ba     = aperture_params[3]
-    ps_aper_pa     = aperture_params[4]
-    
-    if len(jarrett_params) > 1:
-      w1r_jarrett    = jarrett_params[0]
-      ba_jarrett     = jarrett_params[1]
-      pa_jarrett     = jarrett_params[2]
-    
-    radius_aw      = np.array([allwise_params[0], allwise_params[1], allwise_params[2], allwise_params[3]])
-    ba_aw          = np.array([allwise_params[4], allwise_params[5], allwise_params[6], allwise_params[7]])
-    pa_aw          = np.array([allwise_params[8], allwise_params[9], allwise_params[10], allwise_params[11]])
-    
-    for band in range(4):
-      fits_dir        = wise_dir + galaxy +'/'
-      im_fits         = galaxy + '-w%i.fits' % (band + 1)
-      if os.path.isfile(fits_dir + im_fits):
-        im_mir          = galaxy + '_w%i.mir' % (band + 1)
-        mask_fits       = galaxy + '_r_mask_2.fits'
-        if os.path.isfile(panstarrs_dir + galaxy +'/' + mask_fits):
-          mask_mir        = galaxy + '_r_mask_2.mir'
-          regrid_fits     = galaxy + '_r_mask_2.regrid.fits'
-          regrid_mir      = galaxy + '_r_mask_2.regrid.mir'
-        else:
-          mask_fits       = galaxy + '_r_mask.fits'
-          mask_mir        = galaxy + '_r_mask.mir'
-          regrid_fits     = galaxy + '_r_mask.regrid.fits'
-          regrid_mir      = galaxy + '_r_mask.regrid.mir'
-        os.chdir(fits_dir)
-        if band == 0:
-          os.system('cp ../../PANSTARRS/%s/%s .' % (galaxy, mask_fits))
-          os.system('fits in=%s op=xyin out=%s' % (mask_fits, mask_mir))
-        os.system('fits in=%s op=xyin out=%s' % (im_fits, im_mir))
-        os.system('regrid in=%s out=%s tin=%s' % (mask_mir, regrid_mir, im_mir))
-        os.system('fits in=%s op=xyout out=%s' % (regrid_mir, regrid_fits))
-        os.system('rm -rf %s' % regrid_mir)
-        os.system('rm -rf %s' % im_mir)
-        f1              = pyfits.open(im_fits)
-        data, hdr       = f1[0].data, f1[0].header
-        wcs             = WCS(hdr)
-        #magzp           = hdr['MAGZP']
-        magzp           = hdr['ZEROPT']
-        naxis1          = hdr['NAXIS1']
-        naxis2          = hdr['NAXIS2']
-        #background      = hdr['MEDINT']
-        pix_scale       = np.abs(hdr['CD1_1']) * 3600.
-        
-        f2              = pyfits.open(regrid_fits)
-        data_r, hdr_r   = f2[0].data, f2[0].header
-        
-        f3              = pyfits.open(mask_fits)
-        hdr_hres        = f3[0].header
-        wcs_hres        = WCS(hdr_hres)
-        
-        ra_cen, dec_cen = wcs_hres.all_pix2world(ps_aper_x, ps_aper_y, 0)
-        position        = SkyCoord(ra_cen*u.deg, dec_cen*u.deg, frame='icrs')
-        x_pix, y_pix    = wcs.all_world2pix(position.ra.deg, position.dec.deg, 0)
-        
-        data[np.isnan(data_r)] = np.nan
-        
-        data             = np.ma.masked_invalid(data)
-        
-        majax_conv       = np.sqrt(ps_aper_r**2 + wise_psf_maj[band]**2)
-        minax_conv       = np.sqrt((ps_aper_r * ps_aper_ba)**2 + wise_psf_maj[band]**2)
-        
-        a_ps             = ps_aper_r / pix_scale
-        b_ps             = ps_aper_r * ps_aper_ba / pix_scale
-        #aperture_ps      = EllipticalAperture((x_pix, y_pix), a_ps, b_ps, theta=ps_aper_pa)#*math.pi/180)
-                
-        a_aw             = radius_aw[band] / pix_scale
-        b_aw             = radius_aw[band] * ba_aw[band] / pix_scale
-        aperture_aw      = EllipticalAperture((x_pix, y_pix), a_aw, b_aw, theta=pa_aw[band]*math.pi/180)
-        
-        if len(jarrett_params) > 1:
-          a_jarrett        = w1r_jarrett / pix_scale
-          b_jarrett        = w1r_jarrett * ba_jarrett / pix_scale
-          aperture_jarrett = EllipticalAperture((x_pix, y_pix), a_jarrett, b_jarrett, theta=pa_jarrett*math.pi/180)
-            
-        a                = majax_conv / pix_scale  #r_aper[i] / pix_scale
-        b                = minax_conv / pix_scale  #r_aper[i] * ba_aper[i] / pix_scale
-        aperture         = EllipticalAperture((x_pix, y_pix), a, b, theta=ps_aper_pa)#*math.pi/180)
-        aperture_annulus = EllipticalAnnulus((x_pix, y_pix), a_in=1.5*a, a_out=2.5*a, 
-                                             b_out=2.5*b, b_in=1.5*b, theta=ps_aper_pa)
-            
-        annulus_masks = aperture_annulus.to_mask(method='center')
-        annulus_data = annulus_masks.multiply(data)
-        mask = annulus_masks.data
-        annulus_data_1d = annulus_data[mask > 0]
-        mean_sigclip, median_sigclip, std_sigclip = sigma_clipped_stats(annulus_data_1d)
-        
-        error = std_sigclip * data / data
-        
-        phot_table       = aperture_photometry(data, aperture, error = error)
-        
-        aperture_mask    = aperture.to_mask(method='center')
-        aperture_data    = aperture_mask.multiply(data)
-        
-        
-        #fignum.subplots_adjust(left=0.04, right=0.98, bottom=0.02, top=0.98)
-        ##norm = simple_norm(data, 'asinh', asinh_a=0.0001)
-        #norm = simple_norm(data, 'sqrt', percent=98)
-        #ax1 = fignum.add_subplot(1, 4, band+1, facecolor = 'w')
-        #ax1.imshow(data, origin='lower', cmap='Blues', norm=norm)
-        #ap_patches = aperture_ps.plot(color='red', lw=2, label='Photometry aperture')
-        #ap_patches = aperture_aw.plot(color='magenta', lw=2, label='Photometry aperture')
-        #if len(jarrett_params) > 1:
-          #ap_patches = aperture_jarrett.plot(color='purple', lw=2, label='Photometry aperture')
-        #ap_patches = aperture.plot(color='peru', lw=2, label='Photometry aperture')
-        #if a_ps > 2:
-          #ax1.set_xlim(x_pix - 3.*a_ps, x_pix + 3.*a_ps)
-          #ax1.set_ylim(y_pix - 3.*a_ps, y_pix + 3.*a_ps)
-        #else:
-          #ax1.set_xlim(x_pix - 20.*a_ps, x_pix + 20.*a_ps)
-          #ax1.set_ylim(y_pix - 20.*a_ps, y_pix + 20.*a_ps)
-        #plt.subplots_adjust(wspace=0.1, hspace=0.1)
-        
-        adu     = phot_table['aperture_sum'][0]
-        adu_err = phot_table['aperture_sum_err'][0]
-            
-        if band == 0:
-          adu_w1         = adu
-          adu_w1_err     = adu_err
-          mag_w1         = magzp - 2.5*np.log10(adu)
-          mag_w1_err     = 2.5 * (np.log10(adu + adu_err) - np.log10(adu))
-        if band == 1:
-          adu_w2         = adu
-          adu_w2_err     = adu_err
-          mag_w2         = magzp - 2.5*np.log10(adu)
-          mag_w2_err     = 2.5 * (np.log10(adu + adu_err) - np.log10(adu))
-        if band == 2:
-          adu_w3         = adu
-          adu_w3_err     = adu_err
-          mag_w3         = magzp - 2.5*np.log10(adu)
-          mag_w3_err     = 2.5 * (np.log10(adu + adu_err) - np.log10(adu))
-        if band == 3:
-          adu_w4         = adu
-          adu_w4_err     = adu_err
-          mag_w4         = magzp - 2.5*np.log10(adu)
-          mag_w4_err     = 2.5 * (np.log10(adu + adu_err) - np.log10(adu))
-    
-    return(adu_w1, adu_w1_err, mag_w1, mag_w1_err, adu_w2, adu_w2_err, mag_w2, mag_w2_err,
-           adu_w3, adu_w3_err, mag_w3, mag_w3_err, adu_w4, adu_w4_err, mag_w4, mag_w4_err)
-
-
-# ================================= #
-# ==== Measure WISE Photometry ==== #
-# ================================= #
 def wise_magnitude(wise_dir, galaxy, aperture_params, fignum):
     '''
     wise_dir:         WISE galaxy directory
@@ -218,8 +60,8 @@ def wise_magnitude(wise_dir, galaxy, aperture_params, fignum):
              
              W4-band flux (ADU), flux error (ADU), magnitude, magnitude error
     '''
-    wise_psf_maj     = 1. * np.array([6.08, 6.84, 7.36, 11.99])
-    wise_psf_min     = 1. * np.array([5.60, 6.12, 6.08, 11.65])
+    wise_psf_maj     = 1. * np.array([6.08, 6.84, 7.36, 11.99]) # WISE PSF Major Axis
+    wise_psf_min     = 1. * np.array([5.60, 6.12, 6.08, 11.65]) # WISE PSF Minor Axis
     
     adu_w1, adu_w1_err, mag_w1, mag_w1_err = np.nan, np.nan, np.nan, np.nan
     adu_w2, adu_w2_err, mag_w2, mag_w2_err = np.nan, np.nan, np.nan, np.nan
@@ -237,11 +79,9 @@ def wise_magnitude(wise_dir, galaxy, aperture_params, fignum):
         f1              = pyfits.open(im_fits)
         data, hdr       = f1[0].data, f1[0].header
         wcs             = WCS(hdr)
-        #magzp           = hdr['MAGZP']
         magzp           = hdr['ZEROPT']
         naxis1          = hdr['NAXIS1']
         naxis2          = hdr['NAXIS2']
-        #background      = hdr['MEDINT']
         pix_scale       = np.abs(hdr['CD1_1']) * 3600.
         
         ps_aper_x      = aperture_params[0]
@@ -257,30 +97,35 @@ def wise_magnitude(wise_dir, galaxy, aperture_params, fignum):
         hdr_hres        = f2[0].header
         wcs_hres        = WCS(hdr_hres)
         
+        # Convert optical image pixel position centre to WISE image pixel position
         ra_cen, dec_cen = wcs_hres.all_pix2world(ps_aper_x, ps_aper_y, 0)
         position        = SkyCoord(ra_cen*u.deg, dec_cen*u.deg, frame='icrs')
         x_pix, y_pix    = wcs.all_world2pix(position.ra.deg, position.dec.deg, 0)
         
+        # Reproject masked PanSTARRS image to WISE image and apply mask
         data_r_reproject, footprint = reproject_interp(f2, hdr)
       
         data[np.isnan(data_r_reproject)] = np.nan
         
         data             = np.ma.masked_invalid(data)
         
+        # Convolve PanSTARRS aperture with WISE band PSF
         majax_conv       = np.sqrt(ps_aper_r**2 + (wise_psf_maj[band] / pix_scale)**2)
         minax_conv       = np.sqrt((ps_aper_r * ps_aper_ba)**2 + (wise_psf_maj[band] / pix_scale)**2)
         
-        a_ps             = ps_aper_r #/ pix_scale
-        b_ps             = ps_aper_r * ps_aper_ba #/ pix_scale
-        aperture_ps      = EllipticalAperture((x_pix, y_pix), a_ps, b_ps, theta=ps_aper_pa)#*math.pi/180)
-                
-            
-        a                = majax_conv #/ pix_scale  #r_aper[i] / pix_scale
-        b                = minax_conv #/ pix_scale  #r_aper[i] * ba_aper[i] / pix_scale
-        aperture         = EllipticalAperture((x_pix, y_pix), a, b, theta=ps_aper_pa)#*math.pi/180)
+        # Define PanSTARRS aperture
+        a_ps             = ps_aper_r
+        b_ps             = ps_aper_r * ps_aper_ba
+        aperture_ps      = EllipticalAperture((x_pix, y_pix), a_ps, b_ps, theta=ps_aper_pa)
+        
+        # Define convolved PanSTARRS aperture (used to measure photometry)
+        a                = majax_conv
+        b                = minax_conv
+        aperture         = EllipticalAperture((x_pix, y_pix), a, b, theta=ps_aper_pa)
         aperture_annulus = EllipticalAnnulus((x_pix, y_pix), a_in=1.5*a, a_out=2.5*a, 
                                              b_out=2.5*b, b_in=1.5*b, theta=ps_aper_pa)
             
+        # Estimate standard deviation in WISE image and use as image uncertainty
         annulus_masks = aperture_annulus.to_mask(method='center')
         annulus_data = annulus_masks.multiply(data)
         mask = annulus_masks.data
@@ -289,12 +134,14 @@ def wise_magnitude(wise_dir, galaxy, aperture_params, fignum):
         
         error = std_sigclip * data / data
         
+        # Measure aperture photometry
         phot_table       = aperture_photometry(data, aperture, error = error)
         
         aperture_mask    = aperture.to_mask(method='center')
         aperture_data    = aperture_mask.multiply(data)
         
-        
+        # Plot WISE band images with overlaid PanSTARRS aperture and 
+        # aperture convolved with WISE band PSF.
         fignum.subplots_adjust(left=0.04, right=0.98, bottom=0.02, top=0.98)
         norm = simple_norm(data, 'sqrt', percent=98)
         ax1 = fignum.add_subplot(1, 4, band+1, facecolor = 'w')
@@ -311,7 +158,9 @@ def wise_magnitude(wise_dir, galaxy, aperture_params, fignum):
         
         adu     = phot_table['aperture_sum'][0]
         adu_err = phot_table['aperture_sum_err'][0]
-            
+        
+        # Calculate aperture magnitude/magnitude uncertainty from 
+        # aperture flux/flux uncertainty
         if band == 0:
           adu_w1         = adu
           adu_w1_err     = adu_err
@@ -343,24 +192,8 @@ def wise_magnitude(wise_dir, galaxy, aperture_params, fignum):
 # ================================= #
 C_LIGHT  = const.c.to('km/s').value
 H0       = cosmo.H(0).value
-#RHO_CRIT = cosmo.critical_density(0).value*100**3/1000
-#OMEGA_M  = cosmo.Om(0)
-#OMEGA_DE = cosmo.Ode(0)
 HI_REST  = 1420.406
 
-
-# ================================= #
-# ==== Remove Fits Header Cards === #
-# ================================= #
-def remove_hdr_cards(fits_file):
-    f1     = pyfits.open(fits_file, mode='update')
-    data, hdr  = f1[0].data, f1[0].header
-    c_hdr_cards = ['CTYPE4', 'CRVAL4', 'CDELT4', 'CRPIX4', 'CUNIT4', 'PC01_03', 'PC01_04', 'PC02_03', 'PC02_04', 'PC03_01', 'PC03_02', 'PC03_03', 'PC03_04', 'PC04_01', 'PC04_02', 'PC04_03', 'PC04_04', 'PC1_3', 'PC1_4', 'PC2_3', 'PC2_4', 'PC3_1', 'PC3_2', 'PC3_3', 'PC3_4', 'PC4_1', 'PC4_2', 'PC4_3', 'PC4_4']
-    for i in range(len(c_hdr_cards)):
-      if c_hdr_cards[i] in hdr:
-        del hdr[c_hdr_cards[i]]
-    f1.flush()
-    f1.close()
 
 
 # ================================= #

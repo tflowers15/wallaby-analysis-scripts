@@ -50,19 +50,21 @@ def gaussian_fit(input_dir, galaxy):
     wcs           = WCS(hdr)
     pix_scale     = np.abs(hdr['CDELT1']) * 3600.
     
-    #Create Model 2D Gaussian
+    # Create Model 2D Gaussian
     yme, xme = np.where(data==data.max())
     gauss = Gaussian2D(amplitude=data.max(), x_mean=xme, 
                         y_mean=yme)
     
-    #Fit to Data using the Levenberg-Marquardt Algorithm
+    # Fit to Data using the Levenberg-Marquardt Algorithm
     fitter = LevMarLSQFitter() 
     y,x    = np.indices(data.shape)
     fit    = fitter(gauss, x, y, data, maxiter=1000, acc=1e-08)
     
     f1.close()
     
-    #Output Parameters: RA/Dec (degrees), major/minor axes (arcsec), PA (radians)
+    # Define Output Parameters. Includes a correction for the effect of the 
+    # synthesised beam to the major/minor axis lengths and set position angle 
+    # to between 0 and 360 degrees.
     gaus_x      = fit.x_mean[0]
     gaus_y      = fit.y_mean[0]
     gaus_x_stdv = fit.x_stddev[0] * pix_scale
@@ -76,7 +78,7 @@ def gaussian_fit(input_dir, galaxy):
         gaus_min = gaus_y_stdv
       gaus_maj_pix = fit.x_stddev[0]
       gaus_min_pix = fit.y_stddev[0]
-      gaus_pa  = (fit.theta[0] - np.floor(fit.theta[0]/(2.*math.pi))*2.*math.pi) #+ math.pi/2.
+      gaus_pa  = (fit.theta[0] - np.floor(fit.theta[0]/(2.*math.pi))*2.*math.pi)
     else:
       if gaus_x_stdv > 35 and gaus_y_stdv > 35:
         gaus_min = np.sqrt(gaus_x_stdv**2 - 30.**2)
@@ -89,14 +91,6 @@ def gaussian_fit(input_dir, galaxy):
       gaus_pa  = (fit.theta[0] - np.floor(fit.theta[0]/(2.*math.pi))*2.*math.pi) + math.pi/2.
     
     gaus_ra, gaus_dec = wcs.all_pix2world(gaus_x, gaus_y, 0)
-    
-    #aperture = EllipticalAperture((gaus_x, gaus_y), 2*gaus_maj_pix, 2*gaus_min_pix, theta=gaus_pa)
-    #fig, (ax1) = plt.subplots(1, 1, figsize=(5, 5))
-    #ax1.imshow(data, origin='lower', cmap='Greys_r', vmax=np.nanmax(data))
-    #ap_patches = aperture.plot(color='blue', lw=1.5, label='Photometry aperture')
-    #plt.show()
-    
-    #print(np.round([gaus_ra, gaus_dec, gaus_maj, gaus_min, gaus_pa],2))
     
     return(gaus_ra, gaus_dec, gaus_maj, gaus_min, gaus_pa)
 
@@ -154,6 +148,7 @@ def measure_hi_radial_profile(input_dir, galaxy, aperture_params, fignum):
       
       axis_ratio         = ellmin / ellmaj
       
+      # Get x,y pixel position from RA and Dec
       position           = SkyCoord(ra*u.deg, dec*u.deg, frame='icrs')
       x_pix, y_pix       = wcs.all_world2pix(position.ra.deg, position.dec.deg, 0)
       
@@ -162,6 +157,7 @@ def measure_hi_radial_profile(input_dir, galaxy, aperture_params, fignum):
       area_aperture_list = []
       area_annulus_list  = []
       
+      # Set major/minor axis lengths and separations for defining apertures/annuli
       ring_max           = np.ceil(ellmaj*10. / 7.5) / 2
       scale_list         = np.arange(0,ring_max,1)
       a_ps               = 7.5 / pix_scale
@@ -170,6 +166,7 @@ def measure_hi_radial_profile(input_dir, galaxy, aperture_params, fignum):
       radius_aperture    = scale_list[1:-1] * a_ps * pix_scale
       radius_annulus     = scale_list[2:] * a_ps * pix_scale
       
+      # Define apertures and annuli
       for i in range(1, len(scale_list)-1):
         aperture         = EllipticalAperture((x_pix, y_pix), 
                                               scale_list[i]*a_ps, 
@@ -186,9 +183,10 @@ def measure_hi_radial_profile(input_dir, galaxy, aperture_params, fignum):
         area_aperture_list.append(aperture.area)
         area_annulus_list.append(annulus.area)
       
-      
+      # Set error in the image as the HI cube rms
       error_ap                = data / data * hi_rms
-    
+      
+      # Measure aperture and annulus photometry
       phot_table_aperture     = aperture_photometry(data, aperture_list, error=error_ap)
       phot_table_annulus      = aperture_photometry(data, annulus_list, error=error_ap)
       
@@ -197,6 +195,7 @@ def measure_hi_radial_profile(input_dir, galaxy, aperture_params, fignum):
       aperture_err_list       = []
       annulus_err_list        = []
       
+      # Extract the aperture/annulus flux and flux error
       for i in range(len(annulus_list)):
         string_name = 'aperture_sum_%s' % (i)
         aperture_flux_list.append(phot_table_aperture[string_name][0])
@@ -207,24 +206,17 @@ def measure_hi_radial_profile(input_dir, galaxy, aperture_params, fignum):
       
       f1.close()
       
+      # Calculate total uncertainty in each aperture/annulus
       aperture_err_list = np.array(aperture_err_list) * np.array(area_aperture_list) * 1000.
       annulus_err_list  = np.array(annulus_err_list) * np.array(area_annulus_list) * 1000.
       
+      # Calculate the annulus average HI surface density - is the radial surface density profile.
       annulus_sd_tot    = np.array(annulus_flux_list) * 8.01 * 10**-21 * 2.33 * 10**20 / 900.
-      annulus_surfden   = annulus_sd_tot / np.array(area_annulus_list) #/ (pix_scale*pix_scale)
+      annulus_surfden   = annulus_sd_tot / np.array(area_annulus_list)
       
+      # Calculate the aperture average HI surface density
       aperture_sd_tot   = np.array(aperture_flux_list) * 8.01 * 10**-21 * 2.33 * 10**20 / 900.
-      aperture_surfden  = aperture_sd_tot / np.array(area_aperture_list) #/ (pix_scale*pix_scale)
-      
-      #norm = simple_norm(data, 'sqrt', percent=98)
-      #ax1 = fignum.add_subplot(2, 3, 1, facecolor = 'w')
-      #ax1.imshow(data, origin='lower', cmap='Blues', norm=norm)
-      #for i in range(len(aperture_list)):
-        #if (i/5).is_integer():
-          #ap_patches = aperture_list[i].plot(color='peru', lw=0.75, label='Photometry aperture')
-      #ax1.set_xlim(x_pix - ring_max*a_ps, x_pix + ring_max*a_ps)
-      #ax1.set_ylim(y_pix - ring_max*a_ps, y_pix + ring_max*a_ps)
-      #plt.subplots_adjust(wspace=0.1, hspace=0.1)
+      aperture_surfden  = aperture_sd_tot / np.array(area_aperture_list)
       
       return(np.array(radius_annulus), 
             np.array(area_annulus_list), 
@@ -286,6 +278,9 @@ def derive_hi_size(aperture_array, annulus_array, gaussian_array):
     gaus_maj          = gaussian_array[0]
     gaus_min          = gaussian_array[1]
     
+    # Determine the radius containing 50% of the total 
+    # flux (effect, r50) and correct for the effect of
+    # the synthesised beam.
     aperture_max       = np.nanmax(aperture_total)
     aperture_eff       = aperture_total / aperture_max
     func_reff          = interp1d(aperture_eff, aperture_radius, fill_value='extrapolate')
@@ -300,15 +295,13 @@ def derive_hi_size(aperture_array, annulus_array, gaussian_array):
     
     radius_eff         = np.sqrt(radius_interp_eff**2 - 15.**2)
     
-    func_sd_eff_test   = interp1d(annulus_radius, aperture_surfden, fill_value='extrapolate')
-    surfden_eff_test   = func_sd_eff_test(radius_eff)
-    
+    # Calculate the average HI surface density within r50.
     func_sd_eff        = interp1d(aperture_radius, aperture_surfden, fill_value='extrapolate')
     surfden_eff        = func_sd_eff(radius_eff)
     
-    func_ft_eff        = interp1d(aperture_radius, flux_total, fill_value='extrapolate')
-    flux_eff           = func_ft_eff(radius_eff)
-    
+    # Determine the 1 Msol/pc^2 isodensity radius, radius 
+    # uncertainty and diameter and correct for the effect 
+    # of the synthesised beam.
     if np.nanargmax(annulus_surfden) != 0:
       id_max = np.nanargmax(annulus_surfden)
       func_interp       = interp1d(annulus_surfden[id_max:], annulus_radius[id_max:], fill_value='extrapolate')
@@ -329,13 +322,9 @@ def derive_hi_size(aperture_array, annulus_array, gaussian_array):
     
     radius_iso        = diameter_iso / 2.
     
-    #func_sd_iso_test  = interp1d(annulus_radius, aperture_surfden, fill_value='extrapolate')
-    #surfden_iso_test  = func_sd_iso_test(radius_iso)
-    
+    # Calculate the average HI surface density within the isodensity radius.
     func_sd_iso       = interp1d(aperture_radius, aperture_surfden, fill_value='extrapolate')
     surfden_iso       = func_sd_iso(radius_iso)
-    
-    #print(np.round([surfden_eff_test, surfden_eff, surfden_iso_test, surfden_iso], 2))
     
     return(radius_iso, surfden_iso, diameter_iso, radius_iso_err, 
            radius_eff, surfden_eff, radius_interp_iso, radius_interp_eff)
@@ -387,16 +376,19 @@ def derive_hi_optdisc(input_dir, ps_dir, galaxy, aperture_params):
     hdr_ps          = f2[0].header
     wcs_ps          = WCS(hdr_ps)
     
+    # Convert optical image pixel position centre to HI image pixel position
     ra_cen, dec_cen = wcs_ps.all_pix2world(xpos, ypos, 0)
     position        = SkyCoord(ra_cen*u.deg, dec_cen*u.deg, frame='icrs')
     x_pix, y_pix    = wcs.all_world2pix(position.ra.deg, position.dec.deg, 0)
     
+    # Define and fit optical aperture of HI moment 0 map
     a               = radius / asec_p_pix
     b               = a * ba
     aperture        = EllipticalAperture((x_pix, y_pix), a, b, theta=pa)
     phot_table      = aperture_photometry(data, aperture)
     aperture_flux   = phot_table['aperture_sum'][0]
     
+    # Calculate the average HI surface density within the optical aperture.
     aperture_sd_tot   = aperture_flux * 8.01 * 10**-21 * 2.33 * 10**20 / 900.
     aperture_surfden  = aperture_sd_tot / aperture.area * ba
     
@@ -412,19 +404,15 @@ def save_table_function(table_name, table_data, table_cols):
 # === Surface Brightness Plot ==== #
 # ================================ #
 def surfden_profile_plot(fig_num, sub1, sub2, sub3, flux1, flux2, radius_iso1, radius_iso, radius_eff1, radius_eff):
+    '''
+    Plot HI radial surface density profile and overlay lines indicating the isodensity and effective radii.
+    '''
     matplotlib.rcParams.update({'font.size': 12})
     rc('font',**{'family':'serif','serif':['Times']})
     rc('text', usetex=True)
     ax1 = fig_num.add_subplot(sub1, sub2, sub3, facecolor = 'w')
     ax1.set_ylabel(r'$\Sigma/\mathrm{M}_{\odot}\mathrm{pc}^{-2}$')
-    #if subfig == 211:
-      #ax1.set_xticklabels([])
-    #if subfig == 212 or subfig == 111:
     ax1.set_xlabel(r'Radius [arcsec]')
-    #ax1.set_xlim(0.0, 400.)
-    #ax1.set_ylim(np.nanmin(flux2)-0.2, np.nanmax(flux2)+0.2)
-    #ax1.set_ylim(-2, 2)
-    #plt.plot(model1, model2, color='peru', linewidth=1, linestyle = '-')
     plt.axvline(radius_iso, color = 'peru', linestyle = '--', linewidth = 1.5, zorder = 0)
     plt.axvline(radius_iso1, color = 'sandybrown', linestyle = '--', linewidth = 1, zorder = 0)
     plt.axvline(radius_eff, color = 'mediumvioletred', linestyle = '-.', linewidth = 1.5, zorder = 0)

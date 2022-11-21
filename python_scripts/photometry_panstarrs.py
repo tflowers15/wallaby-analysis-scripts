@@ -263,37 +263,35 @@ def make_segmentation_map_advanced(fits_dir, plots_dir, galaxy, band, hi_positio
     naxis1          = hdr['NAXIS1']
     naxis2          = hdr['NAXIS2']
     
-    #hi_x, hi_y = wcs.all_world2pix(hi_position[0]*u.deg, hi_position[1]*u.deg, 0)
+    # Convert HI 2D Gaussian fit position to PanSTARRS image position.
     hi_x, hi_y = wcs.all_world2pix(hi_position[0], hi_position[1], 0)
-    #pos_hi          = SkyCoord(hi_position[0]*u.deg, hi_position[1]*u.deg, frame='icrs')
     
+    # Calculate the average pixel flux in 10 by 10 pixel box centred on the HI position centre.
     centre_sum = 0
     pixel_sum  = 0
     for ii in range(10):
       for jj in range(10):
-        #centre_sum += data[int(naxis2/2) - 15 + jj][int(naxis1/2) - 15 + ii]
         centre_sum += data[int(hi_y) - 5 + jj][int(hi_x) - 5 + ii]
         pixel_sum  += 1.
         
     centre_avg1      = centre_sum / pixel_sum
     
+    # Calculate the average pixel flux in 10 by 10 pixel box at the centre of the PanSTARRS image.
     centre_sum = 0
     pixel_sum  = 0
     for ii in range(10):
       for jj in range(10):
         centre_sum += data[int(naxis2/2) - 5 + jj][int(naxis1/2) - 5 + ii]
-        #centre_sum += data[int(hi_y) - 5 + jj][int(hi_x) - 5 + ii]
         pixel_sum  += 1.
         
     centre_avg2      = centre_sum / pixel_sum
     
+    # Set the average centre pixel flux as the maximum of the two boxes.
     centre_avg       = np.nanmax(np.array([centre_avg1, centre_avg2]))
     
-    threshold       = detect_threshold(data, nsigma=5.)
+    #threshold       = detect_threshold(data, nsigma=5.)
     sigma           = 3.0 * gaussian_fwhm_to_sigma  # FWHM = 3.
     kernel          = Gaussian2DKernel(sigma, x_size=5, y_size=5)
-    #kernel.normalize()
-    #segm1           = detect_sources(data, threshold, npixels=5, filter_kernel=kernel)
     
     mask            = np.ma.masked_where(data > 1000, data).mask
     
@@ -306,9 +304,11 @@ def make_segmentation_map_advanced(fits_dir, plots_dir, galaxy, band, hi_positio
       threshold       = 2. * bkg.background_rms
     else:
       threshold       = 0.75 * bkg.background_rms
-    #kernel = make_2dgaussian_kernel(3.0, size=5)
     convolved_data  = convolve(data_bkgdsb, kernel)
     
+    # Run segmentation map source finding. Can optionally also doing deblending 
+    # with do_deblend = 1, however this is best left for manually fixing individual 
+    # sources with the make_segmentation_bespoke() function.
     if do_deblend == 1:
       segm2         = detect_sources(convolved_data, threshold, npixels=10)
       segm          = deblend_sources(convolved_data, segm2,
@@ -317,22 +317,27 @@ def make_segmentation_map_advanced(fits_dir, plots_dir, galaxy, band, hi_positio
     else:
       segm          = detect_sources(convolved_data, threshold, npixels=10)
     
+    # Get positions of each segment and determine separations from the HI 2D Gaussian fit position centre
     seg_data        = segm.data
     cat             = source_properties(data, segm)
     tbl             = cat.to_table()
-    #print(tbl.columns)
     ra_seg, dec_seg = wcs.all_pix2world(tbl['xcentroid'], tbl['ycentroid'], 0)
     pos_hi          = SkyCoord(hi_position[0]*u.deg, hi_position[1]*u.deg, frame='icrs')
-    #if galaxy == 'J103627-255957':
-      #ra_tmp, dec_tmp = wcs.all_pix2world(453, 395, 0)
-      #pos_hi          = SkyCoord(ra_tmp*u.deg, dec_tmp*u.deg, frame='icrs')
     pos_seg         = SkyCoord(ra_seg*u.deg, dec_seg*u.deg, frame='icrs')
     cc_dist         = pos_hi.separation(pos_seg)
     
     cc_dist[np.isnan(cc_dist.deg)] = 1000*u.deg
     
-    #print(cat.label)
+    # Identify target segment
+    # Set a minimum radius size in pixels and find segment with smallest separation 
+    # from HI position. If the separation between the identified segment and the HI 
+    # position is greater than a set distance then find nearest segment  with a 
+    # radius > 5 pixels. If no segments are larger than the minimum size then find 
+    # nearest segment with a radius > 5 pixels.
     if hi_position[2] == 3:
+      # If the HI source is classified as a shredded HI source (i.e. flag_src_class = 3),
+      # allow a maximum separation of 60 arcsec (i.e. allow a larger distance between segment 
+      # and HI position).
       if len(cc_dist[cat.equivalent_radius.value > 30]) > 0:
         cc_dist_cut = cc_dist[cat.equivalent_radius.value > 30]
         label_array = np.array(cat.label)
@@ -352,6 +357,8 @@ def make_segmentation_map_advanced(fits_dir, plots_dir, galaxy, band, hi_positio
         id_cut      = np.argmin(cc_dist[cat.equivalent_radius.value > 5])
         min_sep     = np.nanmin(cc_dist[cat.equivalent_radius.value > 5].arcsecond)
     else:
+      # If the HI source is not classified as a shredded HI source (i.e. flag_src_class != 3),
+      # allow a maximum separation of 30 arcsec.
       min_radius = 10
       if len(cc_dist[cat.equivalent_radius.value > min_radius]) > 0:
         cc_dist_cut = cc_dist[cat.equivalent_radius.value > min_radius]
@@ -376,18 +383,20 @@ def make_segmentation_map_advanced(fits_dir, plots_dir, galaxy, band, hi_positio
     
     seg_id          = (cat.label == seg_label)
     
+    # Get target segement parameters (x,y position, radius, b/a axis ratio, position angle)
     seg_x           = tbl[seg_id]['xcentroid'].value
     seg_y           = tbl[seg_id]['ycentroid'].value
     seg_ellip       = tbl[seg_id]['ellipticity'].value
     seg_radius      = tbl[seg_id]['equivalent_radius'].value
     seg_orientation = tbl[seg_id]['orientation'].value
     seg_elongation  = tbl[seg_id]['elongation'].value
-    seg_flux        = tbl[seg_id]['source_sum']#.value
-    seg_pixelmax    = tbl[seg_id]['max_value']#.value
+    seg_flux        = tbl[seg_id]['source_sum']
+    seg_pixelmax    = tbl[seg_id]['max_value']
     
     opt_ba          = 1 - seg_ellip
     opt_pa          = seg_orientation
     
+    # Mask all segments other than target segment in r-band image and save the masked image.
     data[(seg_data != seg_label) & (seg_data > 0)] = np.nan
     data[data < -500] = np.nan
     
@@ -395,13 +404,15 @@ def make_segmentation_map_advanced(fits_dir, plots_dir, galaxy, band, hi_positio
 
     f1.writeto(immask_fits)
     
+    # Plot PanSTARRS segmentation map and r-band image with all segments 
+    # other than the target segment masked.
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(8, 4))
     norm = simple_norm(data, 'sqrt', percent=98)
     aperture         = EllipticalAperture((seg_x[0], seg_y[0]), 
                                             seg_radius[0] * 2., 
                                             seg_radius[0] * 2. * opt_ba[0], 
                                             theta=opt_pa[0] * math.pi / 180.)
-    ax1.imshow(data, origin='lower', cmap='Blues', norm=norm)# vmax=np.nanmax(data)/6)
+    ax1.imshow(data, origin='lower', cmap='Blues', norm=norm)
     aperture_ell  = matplotlib.patches.Ellipse(xy=(seg_x[0], seg_y[0]), 
                             width=seg_radius[0] * 10., 
                             height=seg_radius[0] * 10. * opt_ba[0], 
@@ -417,6 +428,8 @@ def make_segmentation_map_advanced(fits_dir, plots_dir, galaxy, band, hi_positio
     
     f1.close()
     
+    # If the separation between the target segment and the HI position 
+    # is > 20 arcsec, then do not return segment parameters
     if min_sep < 20 or hi_position[2] == 3:
       return(seg_x[0], seg_y[0], seg_radius[0], opt_ba[0], opt_pa[0])
     else:
@@ -490,11 +503,10 @@ def make_segmentation_bespoke(fits_dir, plots_dir, galaxy, band, hi_position, do
       threshold_sig = 2.
       radius_min    = 10.
     
-    threshold       = detect_threshold(data, nsigma=nsigma)
+    #threshold       = detect_threshold(data, nsigma=nsigma)
     sigma           = 3.0 * gaussian_fwhm_to_sigma  # FWHM = 3.
     kernel          = Gaussian2DKernel(sigma, x_size=5, y_size=5)
-    #kernel.normalize()
-    segm1           = detect_sources(data, threshold, npixels=5, filter_kernel=kernel)
+    #segm1           = detect_sources(data, threshold, npixels=5, filter_kernel=kernel)
     
     mask            = np.ma.masked_where(data > 1000, data).mask
     
@@ -502,18 +514,21 @@ def make_segmentation_bespoke(fits_dir, plots_dir, galaxy, band, hi_position, do
     bkg             = Background2D(data, (50, 50), mask=mask, filter_size=(3, 3), bkg_estimator=bkg_estimator)
     data_bkgdsb     = data - bkg.background
     threshold       = threshold_sig * bkg.background_rms
-    #kernel = make_2dgaussian_kernel(3.0, size=5)
     convolved_data  = convolve(data_bkgdsb, kernel)
     
+    # Run segmentation map source finding. Can optionally also doing deblending 
+    # with do_deblend = 1.
     if do_deblend[0] == 1:
       segm2         = detect_sources(convolved_data, threshold, npixels=npixels)
       segm          = deblend_sources(convolved_data, segm2,
                                       npixels=10, nlevels=32, 
-                                      contrast=do_deblend[1])#, mode='exponential')
+                                      contrast=do_deblend[1])
       radius_min = do_deblend[2]
     else:
       segm          = detect_sources(convolved_data, threshold, npixels=npixels)
     
+    
+    # Get positions of each segment and determine separations from the HI 2D Gaussian fit position centre
     seg_data        = segm.data
     cat             = source_properties(data, segm)
     tbl             = cat.to_table()
@@ -524,6 +539,7 @@ def make_segmentation_bespoke(fits_dir, plots_dir, galaxy, band, hi_position, do
     
     cc_dist[np.isnan(cc_dist.deg)] = 1000*u.deg
     
+    # Identify target segment
     cc_dist_cut = cc_dist[cat.equivalent_radius.value > radius_min]
     label_array = np.array(cat.label)
     label_cut   = label_array[cat.equivalent_radius.value > radius_min]
@@ -536,6 +552,7 @@ def make_segmentation_bespoke(fits_dir, plots_dir, galaxy, band, hi_position, do
     
     seg_id          = (cat.label == seg_label)
     
+    # Get target segement parameters (x,y position, radius, b/a axis ratio, position angle)
     seg_x           = tbl[seg_id]['xcentroid'].value
     seg_y           = tbl[seg_id]['ycentroid'].value
     seg_ellip       = tbl[seg_id]['ellipticity'].value
@@ -546,11 +563,8 @@ def make_segmentation_bespoke(fits_dir, plots_dir, galaxy, band, hi_position, do
     opt_ba          = 1 - seg_ellip
     opt_pa          = seg_orientation
     
+    # Mask all segments other than target segment in r-band image and save the masked image.
     data[(seg_data != seg_label) & (seg_data > 0)] = np.nan
-    
-    #if do_cut_above[0]:
-      #data[data > do_cut_above[1]] = np.nan
-      #seg_x, seg_y = do_cut_above[2], do_cut_above[3]
     
     data = np.ma.masked_invalid(data)
 
@@ -558,13 +572,15 @@ def make_segmentation_bespoke(fits_dir, plots_dir, galaxy, band, hi_position, do
     
     hi_x, hi_y = wcs.all_world2pix(hi_position[0], hi_position[1], 0)
     
+    # Plot PanSTARRS segmentation map and r-band image with all segments 
+    # other than the target segment masked.
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(8, 4))
     norm = simple_norm(data, 'sqrt', percent=98)
     aperture         = EllipticalAperture((seg_x[0], seg_y[0]), 
                                             seg_radius[0] * 2., 
                                             seg_radius[0] * 2. * opt_ba[0], 
                                             theta=opt_pa[0] * math.pi / 180.)
-    ax1.imshow(data, origin='lower', cmap='Blues', norm=norm)# vmax=np.nanmax(data)/6)
+    ax1.imshow(data, origin='lower', cmap='Blues', norm=norm)
     aperture_ell  = matplotlib.patches.Ellipse(xy=(seg_x[0], seg_y[0]), 
                             width=seg_radius[0] * 10., 
                             height=seg_radius[0] * 10. * opt_ba[0], 
@@ -586,7 +602,7 @@ def make_segmentation_bespoke(fits_dir, plots_dir, galaxy, band, hi_position, do
 
 
 # ================================= #
-# === Measure GALEX Photometry ==== #
+# == Measure PanSTARRS Photometry = #
 # ================================= #
 def extract_surface_brightness(survey_dir, galaxy, aperture_params, band, radius_max, fignum):
     '''
@@ -625,9 +641,6 @@ def extract_surface_brightness(survey_dir, galaxy, aperture_params, band, radius
     fits_dir       = survey_dir + galaxy +'/'
     im_fits        = galaxy + '_%s.fits' % band
     immask_fits    = galaxy + '_r_mask.fits'
-    #immask_fits2    = galaxy + '_r_mask4.fits'
-    
-    #print(fits_dir)
     
     os.chdir(fits_dir)
     
@@ -640,12 +653,7 @@ def extract_surface_brightness(survey_dir, galaxy, aperture_params, band, radius
     f2              = pyfits.open(immask_fits, memmap=False)
     data_r, hdr_r   = f2[0].data, f2[0].header
     
-    #data_r[data_r < -750] = np.nan
-    
-    #data_r = np.ma.masked_invalid(data_r)
-
-    #f2.writeto(immask_fits2)
-    
+    # Apply r-band mask to PanSTARRS image
     data[np.isnan(data_r)] = np.nan
     
     data             = np.ma.masked_invalid(data)
@@ -656,6 +664,8 @@ def extract_surface_brightness(survey_dir, galaxy, aperture_params, band, radius
     area_annul_list  = []
     area_aper_list   = []
     
+    
+    # Set major/minor axis lengths and separations for defining apertures/annuli
     rmax_pix         = radius_max / 0.25
     
     if rmax_pix > npix_f1 / 2.:
@@ -666,9 +676,10 @@ def extract_surface_brightness(survey_dir, galaxy, aperture_params, band, radius
     else:
       scale_list       = np.arange(0, rmax_pix, 10)
     
-    radius_aperture    = scale_list[1:-1] #* a_ps * pix_scale
-    radius_annulus     = scale_list[2:] #* a_ps * pix_scale
+    radius_aperture    = scale_list[1:-1]
+    radius_annulus     = scale_list[2:]
     
+    # Define apertures and annuli
     for i in range(1, len(scale_list)-1):
       aperture         = EllipticalAperture((ps_aper_x, ps_aper_y), 
                                             scale_list[i], 
@@ -688,8 +699,9 @@ def extract_surface_brightness(survey_dir, galaxy, aperture_params, band, radius
       
     radius_aperture   = np.array(radius_aperture)
     radius_annulus    = np.array(radius_annulus)
-    area_annul_list   = np.array(area_annul_list) #/ (0.25*0.25)
+    area_annul_list   = np.array(area_annul_list)
     
+    # Initial annulus photometry measurment (used to determine local sky background)
     phot_table_annulus1      = aperture_photometry(data, annulus_list)
     
     annulus_adu_list1        = []
@@ -702,6 +714,8 @@ def extract_surface_brightness(survey_dir, galaxy, aperture_params, band, radius
     
     #print(np.round(annulus_adu_list1, 2))
     
+    # Measure average flux for the outer third of annuli and exclude any annuli with 
+    # a surface brightness < 26.5 mag to remove any unmasked sources in the field.
     sd_profile1 = 25. + 2.5 * np.log10(exptime) - 2.5 * np.log10(annulus_adu_list1 / area_annul_list / 0.0625)
     
     mean_annulus = []
@@ -721,8 +735,10 @@ def extract_surface_brightness(survey_dir, galaxy, aperture_params, band, radius
     else:
       mean_annulus_bkgd = mean_annulus
     
+    # Set the mean background flux as the image uncertainty
     error = np.nanmean(mean_annulus_bkgd) * data / data
     
+    # Measure aperture/annulus photometry to background subtracted image
     phot_table_annulus       = aperture_photometry(data - np.nanmean(mean_annulus_bkgd), 
                                                    annulus_list, error = error)
     phot_table_aperture      = aperture_photometry(data - np.nanmean(mean_annulus_bkgd), 
@@ -735,6 +751,7 @@ def extract_surface_brightness(survey_dir, galaxy, aperture_params, band, radius
     annulus_adu_err_list    = []
     aperture_adu_err_list   = []
     
+    # Extract the aperture/annulus flux and flux error
     for i in range(len(annulus_list)):
       string_name1 = 'aperture_sum_%s' % (i)
       string_name2 = 'aperture_sum_err_%s' % (i)
@@ -750,6 +767,7 @@ def extract_surface_brightness(survey_dir, galaxy, aperture_params, band, radius
     
     #print(np.round(annulus_adu_list, 2))
     
+    # Plot PanSTARRS image with overlaid ellipses showing every 10th contour
     fignum.subplots_adjust(left=0.04, right=0.98, bottom=0.02, top=0.98)
     norm = simple_norm(data, 'sqrt', percent=98)
     if band == 'g':
@@ -769,14 +787,18 @@ def extract_surface_brightness(survey_dir, galaxy, aperture_params, band, radius
                                                  label='Photometry aperture')
     plt.subplots_adjust(wspace=0.1, hspace=0.1)
     
-    
+    # Calculate the surface brightness (mag / arcsec^2) profile using the annulus fluxes
     sd_profile = 25. + 2.5 * np.log10(exptime) - 2.5 * np.log10(annulus_adu_list / area_annul_list / 0.0625)
+    
+    # Calculate the curve of growth (mag) profile using the aperture fluxes
     cg_profile = 25. + 2.5 * np.log10(exptime) - 2.5 * np.log10(aperture_adu_list)
     
+    # Calculate the sky background magnitude as the standard deviation of the annuli 
+    # used to determine the local background
     sky_mag    = 25. + 2.5 * np.log10(exptime) - 2.5 * np.log10(np.nanstd(mean_annulus) / 0.0625)
     
+    
     sd_profile[np.isnan(sd_profile)] = sky_mag
-    #25. + 2.5 * np.log10(exptime) - 2.5 * np.log10(1.5)
     
     sd_profile[radius_annulus > radius_max / 0.25 / 2.] = np.nan
     cg_profile[radius_aperture > radius_max / 0.25 / 2.] = np.nan
@@ -838,6 +860,7 @@ def measure_mag_size(isophote_limit, exptime, aperture_adu, annulus_mag, radii):
     aper_radius  = radii[1]
     radius_iso   = np.nan
     
+    # Determine the r-band isophotal radius and correct for the PanSTARRS beam
     for k in range(len(annu_radius) - 1):
       if annulus_mag[k] < isophote_limit and annulus_mag[k + 1] > isophote_limit:
         radius_iso     = interpolate_value(annu_radius, annulus_mag, isophote_limit, k)
@@ -845,13 +868,17 @@ def measure_mag_size(isophote_limit, exptime, aperture_adu, annulus_mag, radii):
     
     radius_iso       = np.sqrt((radius_iso)**2 - (1.25 / 2.)**2)
     
+    # Determine the total flux within the aperture defined by the r-band isophotal radius
     r_aper_adu_int  = np.interp(radius_iso, aper_radius, aper_adu_r)
     g_aper_adu_int  = np.interp(radius_iso, aper_radius, aper_adu_g)
     
+    # Convert total flux to total magnitude
     mag_r           = 25. + 2.5 * np.log10(exptime_r) - 2.5 * np.log10(r_aper_adu_int)
     mag_g           = 25. + 2.5 * np.log10(exptime_g) - 2.5 * np.log10(g_aper_adu_int)
     
     return(mag_r, mag_g, radius_iso)
+
+
 
 
 def save_table_function(table_name, table_data, table_cols):
@@ -883,9 +910,6 @@ def sb_profile_radius_plot3(fig_num, sub1, sub2, sub3, flux1, flux2, radius_arra
 # ================================= #
 C_LIGHT  = const.c.to('km/s').value
 H0       = cosmo.H(0).value
-#RHO_CRIT = cosmo.critical_density(0).value*100**3/1000
-#OMEGA_M  = cosmo.Om(0)
-#OMEGA_DE = cosmo.Ode(0)
 HI_REST  = 1420.406
 
 

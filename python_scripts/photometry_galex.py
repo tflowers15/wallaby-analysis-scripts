@@ -36,6 +36,11 @@ from functions_calculations import *
 # == Plot GALEX Curve of Growth === #
 # ================================= #
 def curve_of_growth_plot(fig_num, subfig, data, axlbls, radius, txtstr, txtpos):
+    '''
+    Plot GALEX curve of growth before and after background subtraction and 
+    overlay lines indicating the isophotal radius and maximum radius used for 
+    determining the asymptotic magnitude.
+    '''
     matplotlib.rcParams.update({'font.size': 10})
     rc('font',**{'family':'serif','serif':['Times']})
     rc('text', usetex=True)
@@ -46,11 +51,6 @@ def curve_of_growth_plot(fig_num, subfig, data, axlbls, radius, txtstr, txtpos):
     plt.scatter(data[0], data[2], color='peru', s=5, edgecolor='peru', facecolor='none')
     plt.axvline(radius[0], color = 'black', linestyle = '--', linewidth = 1, zorder = 0)
     plt.axvline(radius[1], color = 'grey', linestyle = ':', linewidth = 1, zorder = 0)
-    #if txtpos == 'upper':
-      #plt.text(0.25, 0.9, txtstr, transform=ax1.transAxes)
-      #plt.axhline(23.5, color = 'grey', linestyle = '--', linewidth=1, zorder = 0)
-    #if txtpos == 'lower':
-      #plt.text(0.25, 0.1, txtstr, transform=ax1.transAxes)
     plt.gca().invert_yaxis()
     plt.subplots_adjust(wspace=0.2, hspace=0.2)
     ax1.get_yaxis().set_tick_params(which='both', direction='in')
@@ -61,6 +61,9 @@ def curve_of_growth_plot(fig_num, subfig, data, axlbls, radius, txtstr, txtpos):
 # ========= Scatter Plot ========= #
 # ================================ #
 def scat_mag_derivative_plot(fig_num, subfig, data, fit, txtstr, xlbl, ylbl, col, marker):
+    '''
+    Plot the derivative of the curve of growth for radii with magnitudes differences < 0.05 or < 0.1.
+    '''
     matplotlib.rcParams.update({'font.size': 10})
     rc('font',**{'family':'serif','serif':['Times']})
     rc('text', usetex=True)
@@ -111,11 +114,8 @@ def galex_surface_brightness_rmask(galex_dir, galaxy, aperture_params, band, rma
              background subtracted magnitude, magnitude difference,
              flux [ADU], flux difference [ADU], magnitude, magnitude difference
     '''
-    if band == 'nuv':
-      galex_psf = 11.99
-    if band == 'fuv':
-      galex_psf = 11.99
-    #galex_psf   = np.array([11.99, 11.99]) # 4.9, 4.2
+    wise_psf = 11.99
+    #galex_psf   = np.array([4.9, 4.2]) # 
     #galex_bands = ['nuv', 'fuv']
     adu_nuv, adu_nuv_err, mag_nuv, mag_nuv_err = np.nan, np.nan, np.nan, np.nan
     adu_fuv, adu_fuv_err, mag_fuv, mag_fuv_err = np.nan, np.nan, np.nan, np.nan
@@ -154,18 +154,22 @@ def galex_surface_brightness_rmask(galex_dir, galaxy, aperture_params, band, rma
       ps_aper_ba     = aperture_params[3]
       ps_aper_pa     = aperture_params[4] * math.pi / 180.
       
+      # Convert optical image pixel position centre to GALEX image pixel position
       ra_cen, dec_cen = wcs_hres.all_pix2world(ps_aper_x, ps_aper_y, 0)
       position        = SkyCoord(ra_cen*u.deg, dec_cen*u.deg, frame='icrs')
       x_pix, y_pix    = wcs.all_world2pix(position.ra.deg, position.dec.deg, 0)
       
+      
+      # Reproject masked PanSTARRS image to GALEX image and apply mask
       data_r_reproject, footprint = reproject_interp(f2, hdr)
       
       data[np.isnan(data_r_reproject)] = np.nan
       
       data             = np.ma.masked_invalid(data)
       
-      majax_conv       = np.sqrt(ps_aper_r**2 + (galex_psf / pix_scale)**2)
-      minax_conv       = np.sqrt((ps_aper_r * ps_aper_ba)**2 + (galex_psf / pix_scale)**2)
+      # Convolve PanSTARRS aperture with WISE W4 band PSF
+      majax_conv       = np.sqrt(ps_aper_r**2 + (wise_psf / pix_scale)**2)
+      minax_conv       = np.sqrt((ps_aper_r * ps_aper_ba)**2 + (wise_psf / pix_scale)**2)
       
       aperture_list    = []
       annulus_list     = []
@@ -173,7 +177,8 @@ def galex_surface_brightness_rmask(galex_dir, galaxy, aperture_params, band, rma
       area_annul_list  = []
       area_aper_list   = []
       
-      rmax_pix         = 3. * ps_aper_r #radius_max #/ 1.25
+      # Set major/minor axis lengths and separations for defining apertures/annuli
+      rmax_pix         = 3. * ps_aper_r
       
       if rmax_pix < 30:
         rmax_pix = rmax_pix * 3.
@@ -183,15 +188,13 @@ def galex_surface_brightness_rmask(galex_dir, galaxy, aperture_params, band, rma
       
       scale_list       = np.arange(0, rmax_pix, 2)
       
-      #a_ps             = ps_aper_r / pix_scale
-      #b_ps             = ps_aper_r * ps_aper_ba / pix_scale
-      
       a_ps             = majax_conv
       b_ps             = minax_conv
       
-      radius_aperture    = scale_list[1:-1]
-      radius_annulus     = scale_list[2:]
+      radius_aperture   = scale_list[1:-1]
+      radius_annulus    = scale_list[2:]
       
+      # Define apertures and annuli
       for i in range(1, len(scale_list)-1):
         aperture         = EllipticalAperture((x_pix, y_pix), 
                                               scale_list[i], 
@@ -209,11 +212,14 @@ def galex_surface_brightness_rmask(galex_dir, galaxy, aperture_params, band, rma
         area_annul_list.append(aperture_annulus.area)
         area_aper_list.append(aperture.area)
       
-      phot_table_annulus       = aperture_photometry(data, annulus_list)#, error = error)
+      # Initial annulus photometry measurment (used to determine local sky background)
+      phot_table_annulus       = aperture_photometry(data, annulus_list)
       
       mean_annulus = []
       mean_ids     = []
       
+      # Measure average flux for the outer half of annuli and exclude any annuli with 
+      # average fluxes >0.01 ADU to remove any unmasked sources in the field.
       for i in range(len(annulus_list)):
         if radius_annulus[i] > rmax_pix / 2.:
           annulus_string = string_name = 'aperture_sum_%s' % (i)
@@ -223,7 +229,7 @@ def galex_surface_brightness_rmask(galex_dir, galaxy, aperture_params, band, rma
       mean_annulus      = np.array(mean_annulus)
       mean_annulus      = mean_annulus[mean_annulus < 0.01]
       
-      
+      # Estimate standard deviation in GALEX image and use as image uncertainty
       annulus_masks = aperture_annulus.to_mask(method='center')
       annulus_data = annulus_masks.multiply(data)
       mask = annulus_masks.data
@@ -232,15 +238,13 @@ def galex_surface_brightness_rmask(galex_dir, galaxy, aperture_params, band, rma
       
       error = std_sigclip * data / data
       
-      #phot_table       = aperture_photometry(data, aperture, error = error)
-      
       print(np.round(np.nanmean(mean_annulus), 5), np.round(np.nanmedian(mean_annulus),5))
       
+      # Measure aperture photometry to background subtracted image
       phot_table_bksub  = aperture_photometry(data - np.nanmedian(mean_annulus), aperture_list, error = error)
       
+      # Measure aperture photometry to original image without background subtraction
       phot_table_bk     = aperture_photometry(data, aperture_list, error = error)
-      
-      #phot_table_annulus  = aperture_photometry(data - np.nanmedian(mean_annulus), annulus_list, error = error)
       
       aperture_adu_bksub_list     = []
       aperture_adu_bk_list        = []
@@ -248,6 +252,7 @@ def galex_surface_brightness_rmask(galex_dir, galaxy, aperture_params, band, rma
       aperture_adu_bksub_err_list = []
       #annulus_adu_err_list        = []
       
+      # Extract the aperture/annulus flux and flux error
       for i in range(len(annulus_list)):
         string_name1 = 'aperture_sum_%s' % (i)
         string_name2 = 'aperture_sum_err_%s' % (i)
@@ -256,7 +261,8 @@ def galex_surface_brightness_rmask(galex_dir, galaxy, aperture_params, band, rma
         annulus_adu_list.append(phot_table_annulus[string_name1][0])
         aperture_adu_bksub_err_list.append(phot_table_bksub[string_name2][0])
         #annulus_adu_err_list.append(phot_table_annulus[string_name2][0])
-        
+      
+      # Plot GALEX image with overlaid ellipses showing every 5th contour
       fignum.subplots_adjust(left=0.04, right=0.98, bottom=0.02, top=0.98)
       norm = simple_norm(data, 'sqrt', percent=98)
       if band == 'nuv':
@@ -278,18 +284,25 @@ def galex_surface_brightness_rmask(galex_dir, galaxy, aperture_params, band, rma
       
       plt.subplots_adjust(wspace=0.1, hspace=0.1)
     
+    # Calculate the difference between adjacent annuli fluxes
     annulus_diff = np.diff(np.array(annulus_adu_list),n=1)
     annulus_diff = np.concatenate((annulus_diff, [np.nan]))
     
+    # Calculate the difference between adjacent background subtracted 
+    # aperture fluxes (i.e. derivative of the curve of growth)
     aperture_bksub_diff = np.diff(np.array(aperture_adu_bksub_list),n=1)
     aperture_bksub_diff = np.concatenate((aperture_bksub_diff, [np.nan]))
     
+    # Calculate the difference between adjacent background subtracted 
+    # aperture magnitudes (i.e. derivative of the curve of growth)
     mag_bksub_diff = np.abs(np.diff(magzp - 2.5*np.log10(np.array(aperture_adu_bksub_list)),n=1))
     mag_bksub_diff = np.concatenate((mag_bksub_diff, [np.nan]))
     
+    # Calculate the difference between adjacent aperture fluxes (no background subtraction)
     aperture_bk_diff = np.diff(np.array(aperture_adu_bk_list),n=1)
     aperture_bk_diff = np.concatenate((aperture_bk_diff, [np.nan]))
     
+    # Calculate the difference between adjacent aperture magnitudes (no background subtraction)
     mag_bk_diff = np.abs(np.diff(magzp - 2.5*np.log10(np.array(aperture_adu_bk_list)),n=1))
     mag_bk_diff = np.concatenate((mag_bk_diff, [np.nan]))
     
@@ -321,24 +334,8 @@ def galex_surface_brightness_rmask(galex_dir, galaxy, aperture_params, band, rma
 # ================================= #
 C_LIGHT  = const.c.to('km/s').value
 H0       = cosmo.H(0).value
-#RHO_CRIT = cosmo.critical_density(0).value*100**3/1000
-#OMEGA_M  = cosmo.Om(0)
-#OMEGA_DE = cosmo.Ode(0)
 HI_REST  = 1420.406
 
-
-# ================================= #
-# ==== Remove Fits Header Cards === #
-# ================================= #
-def remove_hdr_cards(fits_file):
-    f1     = pyfits.open(fits_file, mode='update')
-    data, hdr  = f1[0].data, f1[0].header
-    c_hdr_cards = ['CTYPE4', 'CRVAL4', 'CDELT4', 'CRPIX4', 'CUNIT4', 'PC01_03', 'PC01_04', 'PC02_03', 'PC02_04', 'PC03_01', 'PC03_02', 'PC03_03', 'PC03_04', 'PC04_01', 'PC04_02', 'PC04_03', 'PC04_04', 'PC1_3', 'PC1_4', 'PC2_3', 'PC2_4', 'PC3_1', 'PC3_2', 'PC3_3', 'PC3_4', 'PC4_1', 'PC4_2', 'PC4_3', 'PC4_4']
-    for i in range(len(c_hdr_cards)):
-      if c_hdr_cards[i] in hdr:
-        del hdr[c_hdr_cards[i]]
-    f1.flush()
-    f1.close()
 
 
 # ================================= #
@@ -588,9 +585,6 @@ print(len(galaxies))
 
 
 
-
-
-
 # ================================= #
 # === Measure GALEX Photometry ==== #
 # ================================= #
@@ -688,7 +682,6 @@ if do_fit_phot:
         t = Table(tdata, names=tcols)
         t.write(table_str, format = 'fits')
     
-
 
 
 # ================================= #
