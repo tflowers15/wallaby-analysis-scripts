@@ -44,25 +44,7 @@ def scatter_outlier_plot(fig_num, sub1, sub2, sub3, x, y, txtstr, xlbl, ylbl, ma
 # ================================= #
 C_LIGHT  = const.c.to('km/s').value
 H0       = cosmo.H(0).value
-#RHO_CRIT = cosmo.critical_density(0).value*100**3/1000
-#OMEGA_M  = cosmo.Om(0)
-#OMEGA_DE = cosmo.Ode(0)
 HI_REST  = 1420.406
-
-
-# ================================= #
-# ==== Remove Fits Header Cards === #
-# ================================= #
-def remove_hdr_cards(fits_file):
-    f1     = pyfits.open(fits_file, mode='update')
-    data, hdr  = f1[0].data, f1[0].header
-    c_hdr_cards = ['CTYPE4', 'CRVAL4', 'CDELT4', 'CRPIX4', 'CUNIT4', 'PC01_03', 'PC01_04', 'PC02_03', 'PC02_04', 'PC03_01', 'PC03_02', 'PC03_03', 'PC03_04', 'PC04_01', 'PC04_02', 'PC04_03', 'PC04_04', 'PC1_3', 'PC1_4', 'PC2_3', 'PC2_4', 'PC3_1', 'PC3_2', 'PC3_3', 'PC3_4', 'PC4_1', 'PC4_2', 'PC4_3', 'PC4_4']
-    for i in range(len(c_hdr_cards)):
-      if c_hdr_cards[i] in hdr:
-        del hdr[c_hdr_cards[i]]
-    f1.flush()
-    f1.close()
-
 
 
 def calculate_sfrs(wise_mags, nuv_mag_ext, distance, upperlimits):
@@ -90,21 +72,26 @@ def calculate_sfrs(wise_mags, nuv_mag_ext, distance, upperlimits):
   w4_uplim  = upperlimits[1]
   nuv_uplim = upperlimits[2]
   
-  # ======== CALC WISE SFR Jarrett13 ===== #
+  # ======== WISE SFR Jarrett+13 ===== #
+  # Calculate WISE luminosity from magnitude
   w1_lum                        = wise_luminosity(w1_mag, distance, 'W1')
   w2_lum                        = wise_luminosity(w2_mag, distance, 'W2')
   w3_lum                        = wise_luminosity(w3_mag, distance, 'W3')
   w4_lum                        = wise_luminosity(w4_mag, distance, 'W4')
   
+  # Correct W3/W4 luminosity for stellar contamination
   w3_lum_corr                   = w3_lum - 0.201 * w1_lum
   w4_lum_corr                   = w4_lum - 0.044 * w1_lum
   
+  # WISE SFRs derived from uncorrected W3/W4 luminosities
   w3_sfr_mir_nocor              = np.log10((w3_lum) * 4.91 * 10**(-10))
   w4_sfr_mir_nocor              = np.log10((w3_lum) * 7.50 * 10**(-10))
   
+  # WISE SFRs derived from corrected W3/W4 luminosities
   w3_sfr_mir_cor                = np.log10((w3_lum_corr) * 4.91 * 10**(-10))
   w4_sfr_mir_cor                = np.log10((w4_lum_corr) * 7.50 * 10**(-10))
   
+  # Set W3/W4 flux upper limit flags
   w3_mir_uplim                  = np.zeros(len(w3_uplim), dtype=int) #np.full_like(w3_uplim, False, dtype=bool)
   w4_mir_uplim                  = np.zeros(len(w4_uplim), dtype=int)
   
@@ -114,58 +101,68 @@ def calculate_sfrs(wise_mags, nuv_mag_ext, distance, upperlimits):
   w3_sfr_mir                    = w3_sfr_mir_cor
   w4_sfr_mir                    = w4_sfr_mir_cor
   
-  w3_sfr_mir[w3_mir_uplim]      = w3_sfr_mir_nocor[w3_mir_uplim]
-  w4_sfr_mir[w4_mir_uplim]      = w4_sfr_mir_nocor[w4_mir_uplim]
+  # Replace corrected SFRs for W3/W4 flux upper limits with uncorrected SFRs
+  w3_sfr_mir[w3_mir_uplim == 1]      = w3_sfr_mir_nocor[w3_mir_uplim == 1]
+  w4_sfr_mir[w4_mir_uplim == 1]      = w4_sfr_mir_nocor[w4_mir_uplim == 1]
   
   
-  # ======== CALC WISE SFR Cluver17 ===== #
+  # ======== WISE SFR Cluver+17 ===== #
+  # Calculate WISE flux from magnitude
   w1_flux                        = wise_flux(w1_mag, distance, 'W1')
   w2_flux                        = wise_flux(w2_mag, distance, 'W2')
   w3_flux                        = wise_flux(w3_mag, distance, 'W3')
   w4_flux                        = wise_flux(w4_mag, distance, 'W4')
   
+  # Correct W3/W4 flux for stellar contamination
   w3_flux_corr                   = w3_flux - 0.156 * w1_flux
   w4_flux_corr                   = w4_flux - 0.059 * w1_flux
   
+  # WISE luminosity calculated from uncorrected W3/W4 fluxes
   w3_lum_c17                     = wise_flux_to_lum(w3_flux, distance, 'W3')
   w4_lum_c17                     = wise_flux_to_lum(w4_flux, distance, 'W4')
   
+  # WISE luminosity calculated from corrected W3/W4 fluxes
   w3_lum_c17_corr                = wise_flux_to_lum(w3_flux_corr, distance, 'W3')
   w4_lum_c17_corr                = wise_flux_to_lum(w4_flux_corr, distance, 'W4')
   
+  # Set W3/W4 flux upper limit flags
   w3_c17_uplim                   = np.zeros(len(w3_uplim), dtype=int) #np.full_like(w3_uplim, False, dtype=bool)
   w4_c17_uplim                   = np.zeros(len(w4_uplim), dtype=int)
   
   w3_c17_uplim[w3_flux_corr < 0] = 1
   w4_c17_uplim[w4_flux_corr < 0] = 1
   
+  # WISE SFRs derived from uncorrected W3/W4 luminosities
   w3_sfr_c17_nocor               = 0.889 * np.log10(w3_lum_c17) - 7.76
   w4_sfr_c17_nocor               = 0.915 * np.log10(w4_lum_c17) - 8.01
   
+  # WISE SFRs derived from corrected W3/W4 luminosities
   w3_sfr_c17_corr                = 0.889 * np.log10(w3_lum_c17_corr) - 7.76
   w4_sfr_c17_corr                = 0.915 * np.log10(w4_lum_c17_corr) - 8.01
   
   w3_sfr_c17                     = w3_sfr_c17_corr
   w4_sfr_c17                     = w4_sfr_c17_corr
   
-  w3_sfr_c17[w3_c17_uplim]       = w3_sfr_c17_nocor[w3_c17_uplim]
-  w4_sfr_c17[w4_c17_uplim]       = w4_sfr_c17_nocor[w4_c17_uplim]
+  # Replace corrected SFRs for W3/W4 flux upper limits with uncorrected SFRs
+  w3_sfr_c17[w3_c17_uplim == 1]       = w3_sfr_c17_nocor[w3_c17_uplim == 1]
+  w4_sfr_c17[w4_c17_uplim == 1]       = w4_sfr_c17_nocor[w4_c17_uplim == 1]
   
-  # ======== CALC GALEX SFR ==== #
+  # ======== GALEX NUV SFR ==== #
   nuv_lum                       = galex_luminosity(np.array(nuv_mag_ext), distance, 'NUV')
   nuv_sfr                       = np.log10(nuv_lum * 10**(-28.165))
   
-  # ======== CALC SFR TOTAL ============= #
+  # ======== TOTAL NUV+MIR SFR ============= #
   sfr_tot_w3_uvir               = np.log10(10**w3_sfr_mir + 10**nuv_sfr)
   sfr_tot_w4_uvir               = np.log10(10**w4_sfr_mir + 10**nuv_sfr)
   
-  
+  # Set flags for no GALEX coverage
   no_galex                        = np.zeros(len(w3_uplim), dtype=int) #np.full_like(w3_uplim, False, dtype=bool)
   no_galex[np.isnan(nuv_mag_ext)] = 1
   
   sfr_tot_w3                      = sfr_tot_w3_uvir
   sfr_tot_w4                      = sfr_tot_w4_uvir
   
+  # Replace NUV+MIR SFRs with MIR SFRs for sources without GALEX coverage
   sfr_tot_w3[np.isnan(nuv_sfr)]   = w3_sfr_mir[np.isnan(nuv_sfr)]
   sfr_tot_w4[np.isnan(nuv_sfr)]   = w4_sfr_mir[np.isnan(nuv_sfr)]
   
@@ -173,11 +170,13 @@ def calculate_sfrs(wise_mags, nuv_mag_ext, distance, upperlimits):
   
   sfr_tot[w4_mir_uplim == 1]      = sfr_tot_w3[w4_mir_uplim == 1]
   
+  # Create combined W3/W4 upper limit flag array
   w34_uplim                       = np.zeros(len(w4_mir_uplim), dtype=int) 
   #np.full_like(w4_mir_uplim, False, dtype=bool)
   w34_uplim[w4_mir_uplim == 1]    = 1
   w34_uplim[w4_mir_uplim == 1]    = w3_mir_uplim[w4_mir_uplim == 1]
   
+  # Create combined upper limit flag array (W3, W4, NUV upper limits and no GALEX coverage)
   total_uplim                     = np.zeros(len(w3_uplim), dtype=int) #np.full_like(w3_uplim, False, dtype=bool)
   total_uplim[w4_uplim == 1]      = 1
   total_uplim[w4_mir_uplim == 1]  = 1
@@ -316,9 +315,9 @@ lbl_sfe    = r'$\log$(SFE/[yr$^{-1}$])'
 do_open_tables           = True          # Always True, opens and joins tables
 do_get_source_properties = True          # Always True, provides input source parameters
 
-do_get_dust_extinction   = True          # Only True once to create table with Galactic dust extinctions E(B-V)
+do_get_dust_extinction   = False          # Only True once to create table with Galactic dust extinctions E(B-V)
 
-do_derive_quantities     = False         # True to derive quantities and output table for single team release
+do_derive_quantities     = True         # True to derive quantities and output table for single team release
 
 do_pilot_survey_all      = False         # True to derive quantities and output single table for all team releases
 
@@ -566,33 +565,16 @@ if do_get_source_properties:
   
   nuv_uplim[nuv_snr < galex_snr_cut] = 1
   
-  
-  #nuv_mag[nuv_mag > 20]           = 20
-  
   incl            = np.arcsin(np.sqrt(1. - rband_ba**2)) * 180. / math.pi
   
   if not do_get_dust_extinction:
     extinct_SAF = data_mask['E(B-V)_SandF']
     extinct_SFD = data_mask['E(B-V)_SFD']
   
-  #if have_segments:
-    #seg_x        = data_mask['SEG_X']
-    #seg_y        = data_mask['SEG_Y']
-    #seg_radius   = data_mask['SEG_RADIUS']
-    #seg_ba       = data_mask['SEG_BA']
-    #seg_pa       = data_mask['SEG_PA']
-  
-  #if have_optical:
-    ##fitness      = data_mask['FIT']
-    #ps_x         = data_mask['SEG_X']
-    #ps_y         = data_mask['SEG_Y']
-    #ps_ba        = data_mask['SEG_BA']
-    #ps_pa        = data_mask['SEG_PA']
-    #ps_radius25  = data_mask['RADIUS_R_ISO25']
-    #ps_radius50  = data_mask['RADIUS_R_50']
-    ##fitness      = data_mask['FIT']
 
-
+# ================================= #
+# ===== Get Dust Extinctions ====== #
+# ================================= #
 if do_get_dust_extinction:
   # ======== Galactic Dust Extinction ========== #
   pos_hi               = SkyCoord(sofia_ra*u.deg, sofia_dec*u.deg, frame='icrs')
@@ -622,9 +604,6 @@ if do_get_dust_extinction:
   for i in range(len(tdata_1)):
     tdata.append(tdata_1[i])
     tcols.append(tcols_1[i])
-  
-  #print(type(tdata))
-  #print(len(tdata))
   
   t = Table(tdata, names=tcols)
   t.write(table_str, format = 'fits')
@@ -769,9 +748,6 @@ if do_derive_quantities:
       tdata.append(tdata_1[i])
       tcols.append(tcols_1[i])
     
-    #print(type(tdata))
-    #print(len(tdata))
-    
     t = Table(tdata, names=tcols)
     t.write(table_str, format = 'fits')
   
@@ -786,11 +762,6 @@ if do_derive_quantities:
       if i < len(data_sofia.columns.names):
         tdata.append(data_join[data_join.columns[i].name])
         tcols.append(data_join.columns[i].name)
-    
-    #table_str  = basedir + 'PARAMETERS2/derived_galaxy_sfrs5.fits'
-    #os.system('rm -rf %s' % table_str)
-    
-    #tdata_sfr = np.concatenate(([galaxies, sofia_id, environ_class, mstar_sdss25], sfr_parameters))
     
     tdata_sfr1 = [w3_sfr_mir_nocor, w4_sfr_mir_nocor, 
                   w3_sfr_mir_cor, w4_sfr_mir_cor, 
@@ -836,8 +807,10 @@ if do_derive_quantities:
 # ================================= #
 if do_pilot_survey_all:
   #tr_i                     = 4
-  survey_phase_list        = ['PHASE1', 'PHASE1', 'PHASE1', 'PHASE2', 'PHASE2', 'PHASE2']
-  team_release_list        = ['Hydra_DR1', 'Hydra_DR2', 'NGC4636_DR1', 'NGC4808_DR1', 'NGC5044_DR1', 'NGC5044_DR2']
+  survey_phase_list        = ['PHASE1', 'PHASE1', 'PHASE1', 
+                              'PHASE2', 'PHASE2', 'PHASE2']
+  team_release_list        = ['Hydra_DR1', 'Hydra_DR2', 'NGC4636_DR1', 
+                              'NGC4808_DR1', 'NGC5044_DR1', 'NGC5044_DR2']
   
   basedir                  = '/Users/tflowers/WALLABY/PHASE2/NGC5044_DR1/'
   fits_dr1                 = basedir + 'SOFIA/' + 'NGC5044_DR1_catalogue.fits'
