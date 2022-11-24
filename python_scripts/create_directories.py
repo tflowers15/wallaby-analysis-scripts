@@ -83,6 +83,7 @@ plots_dir                = basedir + 'PLOTS/'
 if create_directories:
   print('============ Make Directories ============')
   #os.system('mkdir %s' % (basedir))
+  os.system('mkdir %s' % ('sofia_dir'))
   os.system('mkdir %s' % (basedir + 'MULTIWAVELENGTH/'))
   os.system('mkdir %s' % panstarrs_dir)
   os.system('mkdir %s' % (panstarrs_dir + 'PROFILES_BKGDSUB/'))
